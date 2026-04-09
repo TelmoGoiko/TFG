@@ -3,11 +3,11 @@ import { Link } from 'react-router-dom'
 import EmptyState from '../components/common/EmptyState'
 import AppShell from '../components/layout/AppShell'
 import {
-  createRepository,
-  getRepositoryFiles,
-  getRepositories,
+  createWorkspace,
+  getWorkspaceFiles,
+  getWorkspaces,
 } from '../services/repositoryService'
-import { getWorkspaces } from '../services/workspaceService'
+import { getGeneratedRuns } from '../services/workspaceService'
 
 const RepositoriesPage = () => {
   const [workspaces, setWorkspaces] = useState([])
@@ -19,14 +19,14 @@ const RepositoriesPage = () => {
   const [isCreating, setIsCreating] = useState(false)
 
   const loadDashboard = async () => {
-    const repositories = await getRepositories()
-    setWorkspaces(repositories)
+    const workspaces = await getWorkspaces()
+    setWorkspaces(workspaces)
 
     const statsEntries = await Promise.all(
-      repositories.map(async (workspace) => {
+      workspaces.map(async (workspace) => {
         const [files, generated] = await Promise.all([
-          getRepositoryFiles(workspace.id),
-          getWorkspaces(workspace.id),
+          getWorkspaceFiles(workspace.id),
+          getGeneratedRuns(workspace.id),
         ])
 
         return [workspace.id, { fileCount: files.length, generatedCount: generated.length }]
@@ -36,11 +36,11 @@ const RepositoriesPage = () => {
     setWorkspaceStats(Object.fromEntries(statsEntries))
 
     const allGenerated = await Promise.all(
-      repositories.map(async (workspace) => {
-        const generated = await getWorkspaces(workspace.id)
+      workspaces.map(async (workspace) => {
+        const generated = await getGeneratedRuns(workspace.id)
         return generated.map((item) => ({
           id: item.id,
-          repositoryId: workspace.id,
+          workspaceId: workspace.id,
           workspaceName: workspace.name,
           title: item.prompt,
           createdAt: item.createdAt,
@@ -77,7 +77,7 @@ const RepositoriesPage = () => {
     setIsCreating(true)
 
     try {
-      await createRepository({ name, description })
+      await createWorkspace({ name, description })
       setName('')
       setDescription('')
       await loadDashboard()
@@ -210,7 +210,7 @@ const RepositoriesPage = () => {
                     <td>
                       <Link
                         className="table-link"
-                        to={`/workspaces/${doc.repositoryId}/generated/${doc.id}`}
+                        to={`/workspaces/${doc.workspaceId}/generated/${doc.id}`}
                       >
                         Open
                       </Link>

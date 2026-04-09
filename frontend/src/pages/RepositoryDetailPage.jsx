@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/layout/AppShell'
 import {
-  deleteRepositoryFile,
-  getRepositoryById,
-  getRepositoryFiles,
-  uploadRepositoryFile,
+  deleteWorkspace,
+  deleteWorkspaceFile,
+  getWorkspaceById,
+  getWorkspaceFiles,
+  uploadWorkspaceFile,
 } from '../services/repositoryService'
-import { getWorkspaces } from '../services/workspaceService'
+import { getGeneratedRuns } from '../services/workspaceService'
 
 const RepositoryDetailPage = () => {
-  const { repositoryId } = useParams()
+  const { workspaceId } = useParams()
+  const navigate = useNavigate()
   const [workspace, setWorkspace] = useState(null)
   const [knowledgeBaseFiles, setKnowledgeBaseFiles] = useState([])
   const [generatedDocs, setGeneratedDocs] = useState([])
@@ -20,9 +22,9 @@ const RepositoryDetailPage = () => {
 
   const loadWorkspace = async () => {
     const [repositoryPayload, filesPayload, generatedPayload] = await Promise.all([
-      getRepositoryById(repositoryId),
-      getRepositoryFiles(repositoryId),
-      getWorkspaces(repositoryId),
+      getWorkspaceById(workspaceId),
+      getWorkspaceFiles(workspaceId),
+      getGeneratedRuns(workspaceId),
     ])
 
     setWorkspace(repositoryPayload)
@@ -32,7 +34,7 @@ const RepositoryDetailPage = () => {
 
   useEffect(() => {
     loadWorkspace().catch((nextError) => setError(nextError.message))
-  }, [repositoryId])
+  }, [workspaceId])
 
   const onUploadFiles = async (event) => {
     event.preventDefault()
@@ -47,7 +49,7 @@ const RepositoryDetailPage = () => {
 
     try {
       for (const file of selectedFiles) {
-        await uploadRepositoryFile(repositoryId, file)
+        await uploadWorkspaceFile(workspaceId, file)
       }
 
       setSelectedFiles([])
@@ -60,8 +62,24 @@ const RepositoryDetailPage = () => {
   }
 
   const onDeleteFile = async (fileId) => {
-    await deleteRepositoryFile(repositoryId, fileId)
+    await deleteWorkspaceFile(workspaceId, fileId)
     await loadWorkspace()
+  }
+
+  const onDeleteWorkspace = async () => {
+    if (!workspace) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Delete workspace "${workspace.name}"? This also removes files and generated runs.`,
+    )
+    if (!confirmed) {
+      return
+    }
+
+    await deleteWorkspace(workspaceId)
+    navigate('/workspaces')
   }
 
   const generatedSummary = useMemo(() => {
@@ -88,7 +106,7 @@ const RepositoryDetailPage = () => {
       <p className="workspace-sidebar-kicker">Project</p>
       <h2>{workspace.name}</h2>
       <p className="hint">{workspace.description || 'Sin descripcion de workspace.'}</p>
-      <Link className="btn btn-dark" to={`/workspaces/${repositoryId}/generate`}>
+      <Link className="btn btn-dark" to={`/workspaces/${workspaceId}/generate`}>
         + New Document
       </Link>
       <nav className="workspace-sidebar-nav" aria-label="Workspace sections">
@@ -106,9 +124,14 @@ const RepositoryDetailPage = () => {
       subtitle="Manage input sources and generated architectural outputs."
       sidebar={sidebar}
       actions={
-        <Link className="btn btn-dark" to={`/workspaces/${repositoryId}/generate`}>
-          Generate Proposal
-        </Link>
+        <div className="row-actions">
+          <button type="button" className="btn btn-light" onClick={onDeleteWorkspace}>
+            Delete Workspace
+          </button>
+          <Link className="btn btn-dark" to={`/workspaces/${workspaceId}/generate`}>
+            Generate Proposal
+          </Link>
+        </div>
       }
     >
       {error ? (
@@ -168,7 +191,7 @@ const RepositoryDetailPage = () => {
                 <p className="hint">Last edit: {new Date(generatedDoc.createdAt).toLocaleString()}</p>
                 <Link
                   className="btn btn-light"
-                  to={`/workspaces/${repositoryId}/generated/${generatedDoc.id}`}
+                  to={`/workspaces/${workspaceId}/generated/${generatedDoc.id}`}
                 >
                   Open Draft
                 </Link>

@@ -1,9 +1,9 @@
-import { request, toQueryString } from './apiClient'
+import { request } from './apiClient'
 
 const normalizeWorkspace = (workspace) => {
   return {
     id: workspace.id,
-    repositoryId: workspace.repository_id,
+    workspaceId: workspace.workspace_id,
     prompt: workspace.prompt,
     status: workspace.status,
     createdAt: workspace.created_at,
@@ -13,7 +13,7 @@ const normalizeWorkspace = (workspace) => {
 const normalizeBlock = (block) => {
   return {
     id: block.id,
-    workspaceId: block.workspace_id,
+    workspaceRunId: block.workspace_run_id,
     order: block.order_index,
     title: block.title,
     type: block.block_type,
@@ -34,21 +34,20 @@ const normalizeMessage = (message) => {
   }
 }
 
-const getWorkspaces = async (repositoryId) => {
-  const query = toQueryString({ repository_id: repositoryId })
-  const payload = await request(`/workspaces${query}`)
+const getGeneratedRuns = async (workspaceId) => {
+  const payload = await request(`/workspaces/${workspaceId}/generated`)
   return payload.map(normalizeWorkspace)
 }
 
-const getWorkspaceById = async (workspaceId) => {
-  const workspace = await request(`/workspaces/${workspaceId}`)
-  const blocksPayload = await request(`/workspaces/${workspaceId}/blocks`)
+const getGeneratedRunById = async ({ workspaceId, runId }) => {
+  const workspace = await request(`/workspaces/${workspaceId}/generated/${runId}`)
+  const blocksPayload = await request(`/workspaces/${workspaceId}/generated/${runId}/blocks`)
   const blocks = blocksPayload.map(normalizeBlock)
 
   const messagesByBlock = await Promise.all(
     blocks.map(async (block) => {
       const messagesPayload = await request(
-        `/workspaces/${workspaceId}/blocks/${block.id}/messages`,
+        `/workspaces/${workspaceId}/generated/${runId}/blocks/${block.id}/messages`,
       )
       return [block.id, messagesPayload.map(normalizeMessage)]
     }),
@@ -61,11 +60,10 @@ const getWorkspaceById = async (workspaceId) => {
   }
 }
 
-const createWorkspace = async ({ repositoryId, prompt, referenceFiles }) => {
-  const payload = await request('/workspaces', {
+const createGeneratedRun = async ({ workspaceId, prompt, referenceFiles }) => {
+  const payload = await request(`/workspaces/${workspaceId}/generated`, {
     method: 'POST',
     body: JSON.stringify({
-      repository_id: repositoryId,
       prompt,
       reference_document_ids: [],
       reference_file_ids: referenceFiles.map((file) => file.id),
@@ -75,31 +73,37 @@ const createWorkspace = async ({ repositoryId, prompt, referenceFiles }) => {
   return normalizeWorkspace(payload)
 }
 
-const updateBlockContent = async ({ workspaceId, blockId, content }) => {
-  const payload = await request(`/workspaces/${workspaceId}/blocks/${blockId}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      content,
-    }),
-  })
+const updateBlockContent = async ({ workspaceId, runId, blockId, content }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content,
+      }),
+    },
+  )
 
   return normalizeBlock(payload)
 }
 
-const addChatMessage = async ({ workspaceId, blockId, role, content, mentions }) => {
-  const payload = await request(`/workspaces/${workspaceId}/blocks/${blockId}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({
-      role,
-      content,
-      mentions: mentions ?? [],
-    }),
-  })
+const addChatMessage = async ({ workspaceId, runId, blockId, role, content, mentions }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        role,
+        content,
+        mentions: mentions ?? [],
+      }),
+    },
+  )
 
   return normalizeMessage(payload)
 }
 
-const requestMockAssistantEdit = async ({ workspaceId, blockId, userMessage }) => {
+const requestMockAssistantEdit = async ({ workspaceId, runId, blockId, userMessage }) => {
   const response = await request(`/agents/blocks/${blockId}/suggest-edit`, {
     method: 'POST',
     body: JSON.stringify({
@@ -112,6 +116,7 @@ const requestMockAssistantEdit = async ({ workspaceId, blockId, userMessage }) =
 
   await addChatMessage({
     workspaceId,
+    runId,
     blockId,
     role: 'assistant',
     content: assistantResponse,
@@ -121,9 +126,9 @@ const requestMockAssistantEdit = async ({ workspaceId, blockId, userMessage }) =
 }
 
 export {
-  getWorkspaces,
-  getWorkspaceById,
-  createWorkspace,
+  getGeneratedRuns,
+  getGeneratedRunById,
+  createGeneratedRun,
   updateBlockContent,
   addChatMessage,
   requestMockAssistantEdit,

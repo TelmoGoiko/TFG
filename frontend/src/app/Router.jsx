@@ -15,14 +15,14 @@ const AppRouter = () => {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/workspaces" element={<RepositoriesPage />} />
-        <Route path="/workspaces/:repositoryId" element={<RepositoryDetailPage />} />
-        <Route path="/workspaces/:repositoryId/generate" element={<GeneratePage />} />
+        <Route path="/workspaces/:workspaceId" element={<RepositoryDetailPage />} />
+        <Route path="/workspaces/:workspaceId/generate" element={<GeneratePage />} />
         <Route
-          path="/workspaces/:repositoryId/generated/:workspaceId"
+          path="/workspaces/:workspaceId/generated/:runId"
           element={<WorkspacePage />}
         />
         <Route
-          path="/workspaces/:repositoryId/generated/:workspaceId/blocks/:blockId"
+          path="/workspaces/:workspaceId/generated/:runId/blocks/:blockId"
           element={<BlockEditorPage />}
         />
 

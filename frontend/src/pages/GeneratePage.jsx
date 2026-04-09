@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/layout/AppShell'
-import { getRepositoryById, getRepositoryFiles } from '../services/repositoryService'
-import { createWorkspace, getWorkspaces } from '../services/workspaceService'
+import { getWorkspaceById, getWorkspaceFiles } from '../services/repositoryService'
+import { createGeneratedRun, getGeneratedRuns } from '../services/workspaceService'
 
 const GeneratePage = () => {
-  const { repositoryId } = useParams()
+  const { workspaceId } = useParams()
   const navigate = useNavigate()
   const [workspace, setWorkspace] = useState(null)
   const [repositoryFiles, setRepositoryFiles] = useState([])
@@ -17,9 +17,9 @@ const GeneratePage = () => {
 
   useEffect(() => {
     Promise.all([
-      getRepositoryById(repositoryId),
-      getRepositoryFiles(repositoryId),
-      getWorkspaces(repositoryId),
+      getWorkspaceById(workspaceId),
+      getWorkspaceFiles(workspaceId),
+      getGeneratedRuns(workspaceId),
     ])
       .then(([workspacePayload, filesPayload, generatedPayload]) => {
         setWorkspace(workspacePayload)
@@ -27,7 +27,7 @@ const GeneratePage = () => {
         setGeneratedDocs(generatedPayload)
       })
       .catch((nextError) => setError(nextError.message))
-  }, [repositoryId])
+  }, [workspaceId])
 
   const selectedFiles = useMemo(() => {
     return repositoryFiles.filter((file) => selectedFileIds.includes(file.id))
@@ -54,12 +54,12 @@ const GeneratePage = () => {
     setIsSubmitting(true)
 
     try {
-      const generatedDoc = await createWorkspace({
-        repositoryId,
+      const generatedDoc = await createGeneratedRun({
+        workspaceId,
         prompt: prompt.trim(),
         referenceFiles: selectedFiles,
       })
-      navigate(`/workspaces/${repositoryId}/generated/${generatedDoc.id}`)
+      navigate(`/workspaces/${workspaceId}/generated/${generatedDoc.id}`)
     } catch (submissionError) {
       setError(submissionError.message)
     } finally {
@@ -72,7 +72,7 @@ const GeneratePage = () => {
       title="Generate Proposal"
       subtitle={workspace ? `${workspace.name} · Synthesize a new draft` : 'Workspace generation'}
       actions={
-        <Link className="btn btn-light" to={`/workspaces/${repositoryId}`}>
+        <Link className="btn btn-light" to={`/workspaces/${workspaceId}`}>
           Back to Workspace
         </Link>
       }
@@ -123,7 +123,7 @@ const GeneratePage = () => {
       <section className="panel">
         <div className="section-head">
           <h2>Recent Activity</h2>
-          <Link className="table-link" to={`/workspaces/${repositoryId}`}>
+          <Link className="table-link" to={`/workspaces/${workspaceId}`}>
             View workspace
           </Link>
         </div>
@@ -136,7 +136,7 @@ const GeneratePage = () => {
               <p className="hint">{new Date(generatedDoc.createdAt).toLocaleString()}</p>
               <Link
                 className="btn btn-light"
-                to={`/workspaces/${repositoryId}/generated/${generatedDoc.id}`}
+                to={`/workspaces/${workspaceId}/generated/${generatedDoc.id}`}
               >
                 Open Draft
               </Link>

@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom'
 
-const BlockList = ({ workspaceId, repositoryId, blocks }) => {
+const BlockList = ({ workspaceId, runId, blocks }) => {
   return (
     <ul className="block-list">
       {blocks.map((block) => (
         <li key={block.id}>
-          <Link to={`/workspaces/${repositoryId}/generated/${workspaceId}/blocks/${block.id}`}>
+          <Link to={`/workspaces/${workspaceId}/generated/${runId}/blocks/${block.id}`}>
             <div>
               <strong>{block.title}</strong>
               <p>{block.summary}</p>

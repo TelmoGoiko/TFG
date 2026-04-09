@@ -2,22 +2,25 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import BlockList from '../components/editor/BlockList'
 import AppShell from '../components/layout/AppShell'
-import { getRepositoryById } from '../services/repositoryService'
-import { getWorkspaceById } from '../services/workspaceService'
+import { getWorkspaceById } from '../services/repositoryService'
+import { getGeneratedRunById } from '../services/workspaceService'
 
 const WorkspacePage = () => {
-  const { repositoryId, workspaceId } = useParams()
+  const { workspaceId, runId } = useParams()
   const [workspaceContainer, setWorkspaceContainer] = useState(null)
   const [generatedDoc, setGeneratedDoc] = useState(null)
 
   useEffect(() => {
-    Promise.all([getRepositoryById(repositoryId), getWorkspaceById(workspaceId)]).then(
+    Promise.all([
+      getWorkspaceById(workspaceId),
+      getGeneratedRunById({ workspaceId, runId }),
+    ]).then(
       ([containerPayload, generatedPayload]) => {
         setWorkspaceContainer(containerPayload)
         setGeneratedDoc(generatedPayload)
       },
     )
-  }, [repositoryId, workspaceId])
+  }, [workspaceId, runId])
 
   const sidebar = useMemo(() => {
     if (!workspaceContainer) {
@@ -29,12 +32,12 @@ const WorkspacePage = () => {
         <p className="workspace-sidebar-kicker">Workspace</p>
         <h2>{workspaceContainer.name}</h2>
         <p className="hint">{workspaceContainer.description || 'No description available.'}</p>
-        <Link className="btn btn-light" to={`/workspaces/${repositoryId}`}>
+        <Link className="btn btn-light" to={`/workspaces/${workspaceId}`}>
           Back to Workspace
         </Link>
       </div>
     )
-  }, [repositoryId, workspaceContainer])
+  }, [workspaceId, workspaceContainer])
 
   if (!generatedDoc) {
     return (
@@ -52,7 +55,7 @@ const WorkspacePage = () => {
       subtitle="Select a chapter to open the editor and Copilot assistance."
       sidebar={sidebar}
       actions={
-        <Link className="btn btn-dark" to={`/workspaces/${repositoryId}/generate`}>
+        <Link className="btn btn-dark" to={`/workspaces/${workspaceId}/generate`}>
           New Generation
         </Link>
       }
@@ -62,7 +65,7 @@ const WorkspacePage = () => {
           <h2>Proposal Chapters</h2>
           <span className="hint">{generatedDoc.blocks.length} blocks</span>
         </div>
-        <BlockList workspaceId={workspaceId} repositoryId={repositoryId} blocks={generatedDoc.blocks} />
+        <BlockList workspaceId={workspaceId} runId={runId} blocks={generatedDoc.blocks} />
       </section>
     </AppShell>
   )

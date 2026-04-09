@@ -2,16 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ChatPanel from '../components/editor/ChatPanel'
 import AppShell from '../components/layout/AppShell'
-import { getRepositoryById } from '../services/repositoryService'
+import { getWorkspaceById } from '../services/repositoryService'
 import {
   addChatMessage,
-  getWorkspaceById,
+  getGeneratedRunById,
   requestMockAssistantEdit,
   updateBlockContent,
 } from '../services/workspaceService'
 
 const BlockEditorPage = () => {
-  const { repositoryId, workspaceId, blockId } = useParams()
+  const { workspaceId, runId, blockId } = useParams()
   const contentRef = useRef(null)
 
   const [workspaceContainer, setWorkspaceContainer] = useState(null)
@@ -21,13 +21,16 @@ const BlockEditorPage = () => {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    Promise.all([getRepositoryById(repositoryId), getWorkspaceById(workspaceId)]).then(
+    Promise.all([
+      getWorkspaceById(workspaceId),
+      getGeneratedRunById({ workspaceId, runId }),
+    ]).then(
       ([containerPayload, generatedPayload]) => {
         setWorkspaceContainer(containerPayload)
         setWorkspace(generatedPayload)
       },
     )
-  }, [repositoryId, workspaceId])
+  }, [workspaceId, runId])
 
   const block = useMemo(() => {
     return workspace?.blocks.find((item) => item.id === blockId) ?? null
@@ -59,10 +62,11 @@ const BlockEditorPage = () => {
     setIsSaving(true)
     await updateBlockContent({
       workspaceId,
+      runId,
       blockId: block.id,
       content: contentDraft,
     })
-    const nextWorkspace = await getWorkspaceById(workspaceId)
+    const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
     setWorkspace(nextWorkspace)
     setIsSaving(false)
   }
@@ -72,6 +76,7 @@ const BlockEditorPage = () => {
 
     await addChatMessage({
       workspaceId,
+      runId,
       blockId,
       role: 'user',
       content: messageContent,
@@ -80,11 +85,12 @@ const BlockEditorPage = () => {
 
     await requestMockAssistantEdit({
       workspaceId,
+      runId,
       blockId,
       userMessage: messageContent,
     })
 
-    const nextWorkspace = await getWorkspaceById(workspaceId)
+    const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
     setWorkspace(nextWorkspace)
   }
 
@@ -93,13 +99,13 @@ const BlockEditorPage = () => {
       <p className="workspace-sidebar-kicker">Workspace</p>
       <h2>{workspaceContainer?.name ?? 'Workspace'}</h2>
       <p className="hint">Editor mode</p>
-      <Link className="btn btn-light" to={`/workspaces/${repositoryId}/generated/${workspaceId}`}>
+      <Link className="btn btn-light" to={`/workspaces/${workspaceId}/generated/${runId}`}>
         Chapter Index
       </Link>
       <ul className="mini-doc-list">
         {workspace?.blocks.map((item) => (
           <li key={item.id} className={item.id === blockId ? 'active' : ''}>
-            <Link to={`/workspaces/${repositoryId}/generated/${workspaceId}/blocks/${item.id}`}>
+            <Link to={`/workspaces/${workspaceId}/generated/${runId}/blocks/${item.id}`}>
               {item.title}
             </Link>
           </li>
@@ -112,7 +118,7 @@ const BlockEditorPage = () => {
     return (
       <AppShell title="Document not found" subtitle="The requested content could not be loaded.">
         <article className="panel">
-          <Link className="btn btn-light" to={`/workspaces/${repositoryId}`}>
+          <Link className="btn btn-light" to={`/workspaces/${workspaceId}`}>
             Back to Workspace
           </Link>
         </article>

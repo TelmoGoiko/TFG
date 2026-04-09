@@ -31,7 +31,7 @@ const getFileNameFromDisposition = (dispositionValue) => {
 const getFallbackFileName = (path) => {
   const cleanPath = path.split('?')[0]
   if (cleanPath.endsWith('/download')) {
-    return 'repository_bundle.zip'
+    return 'workspace_bundle.zip'
   }
 
   const segments = cleanPath.split('/').filter(Boolean)

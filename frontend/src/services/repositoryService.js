@@ -1,34 +1,34 @@
 import { getCurrentUser } from './authService'
 import { request, requestBlob, toQueryString } from './apiClient'
 
-const normalizeRepository = (repository) => {
+const normalizeWorkspace = (workspace) => {
   return {
-    id: repository.id,
-    ownerId: repository.owner_id,
-    name: repository.name,
-    description: repository.description,
-    createdAt: repository.created_at,
+    id: workspace.id,
+    ownerId: workspace.owner_id,
+    name: workspace.name,
+    description: workspace.description,
+    createdAt: workspace.created_at,
   }
 }
 
 const normalizeDocument = (document) => {
   return {
     id: document.id,
-    repositoryId: document.repository_id,
+    workspaceId: document.workspace_id,
     title: document.title,
     content: document.content,
     createdAt: document.created_at,
   }
 }
 
-const normalizeRepositoryFile = (repositoryFile) => {
+const normalizeWorkspaceFile = (workspaceFile) => {
   return {
-    id: repositoryFile.id,
-    repositoryId: repositoryFile.repository_id,
-    fileName: repositoryFile.file_name,
-    mimeType: repositoryFile.mime_type,
-    sizeBytes: repositoryFile.size_bytes,
-    createdAt: repositoryFile.created_at,
+    id: workspaceFile.id,
+    workspaceId: workspaceFile.workspace_id,
+    fileName: workspaceFile.file_name,
+    mimeType: workspaceFile.mime_type,
+    sizeBytes: workspaceFile.size_bytes,
+    createdAt: workspaceFile.created_at,
   }
 }
 
@@ -41,16 +41,16 @@ const requireUserId = () => {
   return user.id
 }
 
-const getRepositories = async () => {
+const getWorkspaces = async () => {
   const ownerId = requireUserId()
   const query = toQueryString({ owner_id: ownerId })
-  const repositories = await request(`/repositories${query}`)
-  return repositories.map(normalizeRepository)
+  const workspaces = await request(`/workspaces${query}`)
+  return workspaces.map(normalizeWorkspace)
 }
 
-const createRepository = async ({ name, description }) => {
+const createWorkspace = async ({ name, description }) => {
   const ownerId = requireUserId()
-  const repository = await request('/repositories', {
+  const workspace = await request('/workspaces', {
     method: 'POST',
     body: JSON.stringify({
       owner_id: ownerId,
@@ -59,27 +59,27 @@ const createRepository = async ({ name, description }) => {
     }),
   })
 
-  return normalizeRepository(repository)
+  return normalizeWorkspace(workspace)
 }
 
-const getRepositoryById = async (repositoryId) => {
-  const repository = await request(`/repositories/${repositoryId}`)
-  return normalizeRepository(repository)
+const getWorkspaceById = async (workspaceId) => {
+  const workspace = await request(`/workspaces/${workspaceId}`)
+  return normalizeWorkspace(workspace)
 }
 
-const deleteRepository = async (repositoryId) => {
-  await request(`/repositories/${repositoryId}`, {
+const deleteWorkspace = async (workspaceId) => {
+  await request(`/workspaces/${workspaceId}`, {
     method: 'DELETE',
   })
 }
 
-const getDocumentsByRepository = async (repositoryId) => {
-  const documents = await request(`/repositories/${repositoryId}/documents`)
+const getDocumentsByWorkspace = async (workspaceId) => {
+  const documents = await request(`/workspaces/${workspaceId}/documents`)
   return documents.map(normalizeDocument)
 }
 
-const createDocument = async ({ repositoryId, title, content }) => {
-  const document = await request(`/repositories/${repositoryId}/documents`, {
+const createDocument = async ({ workspaceId, title, content }) => {
+  const document = await request(`/workspaces/${workspaceId}/documents`, {
     method: 'POST',
     body: JSON.stringify({
       title,
@@ -90,54 +90,54 @@ const createDocument = async ({ repositoryId, title, content }) => {
   return normalizeDocument(document)
 }
 
-const deleteDocument = async (repositoryId, documentId) => {
-  await request(`/repositories/${repositoryId}/documents/${documentId}`, {
+const deleteDocument = async (workspaceId, documentId) => {
+  await request(`/workspaces/${workspaceId}/documents/${documentId}`, {
     method: 'DELETE',
   })
 }
 
-const getRepositoryFiles = async (repositoryId) => {
-  const files = await request(`/repositories/${repositoryId}/files`)
-  return files.map(normalizeRepositoryFile)
+const getWorkspaceFiles = async (workspaceId) => {
+  const files = await request(`/workspaces/${workspaceId}/files`)
+  return files.map(normalizeWorkspaceFile)
 }
 
-const uploadRepositoryFile = async (repositoryId, file) => {
+const uploadWorkspaceFile = async (workspaceId, file) => {
   const formData = new FormData()
   formData.append('file', file)
 
-  const uploaded = await request(`/repositories/${repositoryId}/files`, {
+  const uploaded = await request(`/workspaces/${workspaceId}/files`, {
     method: 'POST',
     body: formData,
   })
 
-  return normalizeRepositoryFile(uploaded)
+  return normalizeWorkspaceFile(uploaded)
 }
 
-const deleteRepositoryFile = async (repositoryId, fileId) => {
-  await request(`/repositories/${repositoryId}/files/${fileId}`, {
+const deleteWorkspaceFile = async (workspaceId, fileId) => {
+  await request(`/workspaces/${workspaceId}/files/${fileId}`, {
     method: 'DELETE',
   })
 }
 
-const downloadRepositoryFile = async (repositoryId, fileId) => {
-  return requestBlob(`/repositories/${repositoryId}/files/${fileId}/download`)
+const downloadWorkspaceFile = async (workspaceId, fileId) => {
+  return requestBlob(`/workspaces/${workspaceId}/files/${fileId}/download`)
 }
 
-const downloadRepositoryArchive = async (repositoryId) => {
-  return requestBlob(`/repositories/${repositoryId}/download`)
+const downloadWorkspaceArchive = async (workspaceId) => {
+  return requestBlob(`/workspaces/${workspaceId}/download`)
 }
 
 export {
-  getRepositories,
-  createRepository,
-  getRepositoryById,
-  deleteRepository,
-  getDocumentsByRepository,
+  getWorkspaces,
+  createWorkspace,
+  getWorkspaceById,
+  deleteWorkspace,
+  getDocumentsByWorkspace,
   createDocument,
   deleteDocument,
-  getRepositoryFiles,
-  uploadRepositoryFile,
-  deleteRepositoryFile,
-  downloadRepositoryFile,
-  downloadRepositoryArchive,
+  getWorkspaceFiles,
+  uploadWorkspaceFile,
+  deleteWorkspaceFile,
+  downloadWorkspaceFile,
+  downloadWorkspaceArchive,
 }
