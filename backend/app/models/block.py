@@ -8,9 +8,9 @@ class Block(Base):
     __tablename__ = "blocks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    workspace_id: Mapped[str] = mapped_column(
+    workspace_run_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        ForeignKey("workspace_runs.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

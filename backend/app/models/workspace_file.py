@@ -6,13 +6,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.session import Base
 
 
-class RepositoryFile(Base):
-    __tablename__ = "repository_files"
+class WorkspaceFile(Base):
+    __tablename__ = "workspace_files"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    repository_id: Mapped[str] = mapped_column(
+    workspace_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("repositories.id", ondelete="CASCADE"),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

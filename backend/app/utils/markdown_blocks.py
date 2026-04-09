@@ -10,7 +10,7 @@ def create_file_name(order_index: int, title: str) -> str:
 
 
 def build_default_blocks(prompt: str, reference_titles: list[str]) -> list[dict]:
-    repository_context = (
+    workspace_context = (
         f"Available references: {', '.join(reference_titles)}."
         if reference_titles
         else "No references uploaded yet."
@@ -27,7 +27,7 @@ def build_default_blocks(prompt: str, reference_titles: list[str]) -> list[dict]
             "title": "Context and objectives",
             "block_type": "chapter",
             "summary": "Describe the problem and the intent of the document.",
-            "content": f"# Context and objectives\n\nBase request: {prompt.strip()}\n\n{repository_context}",
+            "content": f"# Context and objectives\n\nBase request: {prompt.strip()}\n\n{workspace_context}",
         },
         {
             "title": "Offer requirements",

@@ -10,9 +10,9 @@ class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    repository_id: Mapped[str] = mapped_column(
+    workspace_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("repositories.id", ondelete="CASCADE"),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
