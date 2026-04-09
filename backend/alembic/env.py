@@ -5,7 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.db.session import Base
-from app.models import item_embedding  # noqa: F401
+from app import models  # noqa: F401
 
 config = context.config
 

@@ -1,0 +1,38 @@
+import { Navigate, Route, Routes } from 'react-router-dom'
+import ProtectedRoute from '../auth/ProtectedRoute'
+import BlockEditorPage from '../pages/BlockEditorPage'
+import GeneratePage from '../pages/GeneratePage'
+import LoginPage from '../pages/LoginPage'
+import RepositoriesPage from '../pages/RepositoriesPage'
+import RepositoryDetailPage from '../pages/RepositoryDetailPage'
+import WorkspacePage from '../pages/WorkspacePage'
+
+const AppRouter = () => {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/workspaces" replace />} />
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route element={<ProtectedRoute />}>
+        <Route path="/workspaces" element={<RepositoriesPage />} />
+        <Route path="/workspaces/:repositoryId" element={<RepositoryDetailPage />} />
+        <Route path="/workspaces/:repositoryId/generate" element={<GeneratePage />} />
+        <Route
+          path="/workspaces/:repositoryId/generated/:workspaceId"
+          element={<WorkspacePage />}
+        />
+        <Route
+          path="/workspaces/:repositoryId/generated/:workspaceId/blocks/:blockId"
+          element={<BlockEditorPage />}
+        />
+
+        <Route path="/repositories" element={<Navigate to="/workspaces" replace />} />
+        <Route path="/generate" element={<Navigate to="/workspaces" replace />} />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/workspaces" replace />} />
+    </Routes>
+  )
+}
+
+export default AppRouter
