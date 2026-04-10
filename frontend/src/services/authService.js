@@ -43,4 +43,22 @@ const getCurrentUser = () => {
   }
 }
 
-export { loginWithEmail, logout, getCurrentUser }
+const registerWithEmail = async ({ email, password }) => {
+  if (!email || !password) {
+    throw new Error('Email and password are required.')
+  }
+  if (password.length < 4) {
+    throw new Error('Password must be at least 4 characters long.')
+  }
+
+  const payload = await request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      email,
+      password,
+    }),
+  })
+}
+  
+
+export { loginWithEmail, logout, getCurrentUser, registerWithEmail }

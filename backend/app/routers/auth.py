@@ -19,3 +19,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
     return LoginResponse(user=UserResponse(id=user.id, email=user.email, created_at=user.created_at))
+
+@router.post("/register", response_model=UserResponse)
+def register(payload: LoginRequest, db: Session = Depends(get_db)) -> UserResponse:
+    service = AuthService(AuthRepository(db))
+
+    try:
+        user = service.register(payload.email, payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return UserResponse(id=user.id, email=user.email, created_at=user.created_at)

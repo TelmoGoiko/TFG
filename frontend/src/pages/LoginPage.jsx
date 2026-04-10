@@ -5,9 +5,11 @@ import useAuth from '../auth/useAuth'
 const LoginPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { loginWithEmail } = useAuth()
+  const { loginWithEmail, registerWithEmail } = useAuth()
+  const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -16,10 +18,20 @@ const LoginPage = () => {
   const onSubmit = async (event) => {
     event.preventDefault()
     setError('')
+
+    if (mode === 'register' && password !== confirmPassword) {
+      setError('Password confirmation does not match.')
+      return
+    }
+
     setIsLoading(true)
 
     try {
-      await loginWithEmail({ email, password })
+      if (mode === 'login') {
+        await loginWithEmail({ email, password })
+      } else {
+        await registerWithEmail({ email, password })
+      }
       navigate(redirectTarget, { replace: true })
     } catch (submissionError) {
       setError(submissionError.message)
@@ -34,8 +46,33 @@ const LoginPage = () => {
         <p className="kicker">Doc Assisted Workflow </p>
         <h1>Welcome to Architectural Editor</h1>
         <p>
-          Login and start creating and editing your documents with our AI-powered editor.
+          {mode === 'login'
+            ? 'Login and start creating and editing your documents with our AI-powered editor.'
+            : 'Create your account and start building documents with our AI-powered editor.'}
         </p>
+
+        <div className="auth-switch" role="tablist" aria-label="Authentication mode">
+          <button
+            type="button"
+            className={`auth-switch-option ${mode === 'login' ? 'active' : ''}`}
+            onClick={() => {
+              setMode('login')
+              setError('')
+            }}
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            className={`auth-switch-option ${mode === 'register' ? 'active' : ''}`}
+            onClick={() => {
+              setMode('register')
+              setError('')
+            }}
+          >
+            Register
+          </button>
+        </div>
 
         <form onSubmit={onSubmit} className="stack-form">
           <label>
@@ -60,9 +97,22 @@ const LoginPage = () => {
             />
           </label>
 
+          {mode === 'register' ? (
+            <label>
+              Confirm password
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                placeholder="repeat your password"
+                required
+              />
+            </label>
+          ) : null}
+
           {error ? <p className="error-text">{error}</p> : null}
           <button className="btn" type="submit" disabled={isLoading}>
-            {isLoading ? 'Logging in...' : 'Log in'}
+            {isLoading ? (mode === 'login' ? 'Logging in...' : 'Creating account...') : mode === 'login' ? 'Log in' : 'Register'}
           </button>
         </form>
       </div>
