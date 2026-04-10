@@ -3,6 +3,7 @@ import {
   getCurrentUser,
   loginWithEmail as loginWithEmailService,
   logout as logoutService,
+  registerWithEmail as registerWithEmailService,
 } from '../services/authService'
 
 const AuthContext = createContext(null)
@@ -21,12 +22,18 @@ const AuthProvider = ({ children }) => {
     setCurrentUser(null)
   }
 
+  const registerWithEmail = async (credentials) => {
+    await registerWithEmailService(credentials)
+    return loginWithEmail(credentials)
+  }
+
   const value = useMemo(() => {
     return {
       currentUser,
       isAuthenticated: Boolean(currentUser),
       loginWithEmail,
       logout,
+      registerWithEmail,
     }
   }, [currentUser])
 

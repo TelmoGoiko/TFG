@@ -639,6 +639,35 @@ select:focus {
   gap: 8px;
 }
 
+.auth-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  background: #eef2fb;
+  border: 1px solid #d5deee;
+  border-radius: 12px;
+  padding: 5px;
+  margin: 8px 0 10px;
+}
+
+.auth-switch-option {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #44506a;
+  font-weight: 700;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+.auth-switch-option.active {
+  background: #ffffff;
+  color: #112f74;
+  box-shadow: 0 2px 8px rgba(16, 41, 91, 0.08);
+  border-color: #d5deee;
+}
+
 .kicker {
   text-transform: uppercase;
   letter-spacing: 0.1em;
