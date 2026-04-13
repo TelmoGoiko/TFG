@@ -7,10 +7,10 @@ import {
   getWorkspaceById,
   getWorkspaceFiles,
   uploadWorkspaceFile,
-} from '../services/repositoryService'
+} from '../services/workspaceContainerService'
 import { getGeneratedRuns } from '../services/workspaceService'
 
-const RepositoryDetailPage = () => {
+const WorkspaceDetailPage = () => {
   const { workspaceId } = useParams()
   const navigate = useNavigate()
   const [workspace, setWorkspace] = useState(null)
@@ -21,13 +21,13 @@ const RepositoryDetailPage = () => {
   const [error, setError] = useState('')
 
   const loadWorkspace = async () => {
-    const [repositoryPayload, filesPayload, generatedPayload] = await Promise.all([
+    const [workspacePayload, filesPayload, generatedPayload] = await Promise.all([
       getWorkspaceById(workspaceId),
       getWorkspaceFiles(workspaceId),
       getGeneratedRuns(workspaceId),
     ])
 
-    setWorkspace(repositoryPayload)
+    setWorkspace(workspacePayload)
     setKnowledgeBaseFiles(filesPayload)
     setGeneratedDocs(generatedPayload)
   }
@@ -204,4 +204,4 @@ const RepositoryDetailPage = () => {
   )
 }
 
-export default RepositoryDetailPage
+export default WorkspaceDetailPage

@@ -3,8 +3,8 @@ import ProtectedRoute from '../auth/ProtectedRoute'
 import BlockEditorPage from '../pages/BlockEditorPage'
 import GeneratePage from '../pages/GeneratePage'
 import LoginPage from '../pages/LoginPage'
-import RepositoriesPage from '../pages/RepositoriesPage'
-import RepositoryDetailPage from '../pages/RepositoryDetailPage'
+import MainPage from '../pages/MainPage'
+import WorkspaceDetailPage from '../pages/WorkspaceDetailPage'
 import WorkspacePage from '../pages/WorkspacePage'
 
 const AppRouter = () => {
@@ -14,8 +14,8 @@ const AppRouter = () => {
       <Route path="/login" element={<LoginPage />} />
 
       <Route element={<ProtectedRoute />}>
-        <Route path="/workspaces" element={<RepositoriesPage />} />
-        <Route path="/workspaces/:workspaceId" element={<RepositoryDetailPage />} />
+        <Route path="/workspaces" element={<MainPage />} />
+        <Route path="/workspaces/:workspaceId" element={<WorkspaceDetailPage />} />
         <Route path="/workspaces/:workspaceId/generate" element={<GeneratePage />} />
         <Route
           path="/workspaces/:workspaceId/generated/:runId"

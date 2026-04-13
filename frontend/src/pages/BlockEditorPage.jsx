@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ChatPanel from '../components/editor/ChatPanel'
 import AppShell from '../components/layout/AppShell'
-import { getWorkspaceById } from '../services/repositoryService'
+import { getWorkspaceById } from '../services/workspaceContainerService'
 import {
   addChatMessage,
   getGeneratedRunById,

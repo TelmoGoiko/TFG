@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/layout/AppShell'
-import { getWorkspaceById, getWorkspaceFiles } from '../services/repositoryService'
+import { getWorkspaceById, getWorkspaceFiles } from '../services/workspaceContainerService'
 import { createGeneratedRun, getGeneratedRuns } from '../services/workspaceService'
 
 const GeneratePage = () => {
   const { workspaceId } = useParams()
   const navigate = useNavigate()
   const [workspace, setWorkspace] = useState(null)
-  const [repositoryFiles, setRepositoryFiles] = useState([])
+  const [workspaceFiles, setWorkspaceFiles] = useState([])
   const [generatedDocs, setGeneratedDocs] = useState([])
   const [selectedFileIds, setSelectedFileIds] = useState([])
   const [prompt, setPrompt] = useState('')
@@ -23,15 +23,15 @@ const GeneratePage = () => {
     ])
       .then(([workspacePayload, filesPayload, generatedPayload]) => {
         setWorkspace(workspacePayload)
-        setRepositoryFiles(filesPayload)
+        setWorkspaceFiles(filesPayload)
         setGeneratedDocs(generatedPayload)
       })
       .catch((nextError) => setError(nextError.message))
   }, [workspaceId])
 
   const selectedFiles = useMemo(() => {
-    return repositoryFiles.filter((file) => selectedFileIds.includes(file.id))
-  }, [repositoryFiles, selectedFileIds])
+    return workspaceFiles.filter((file) => selectedFileIds.includes(file.id))
+  }, [workspaceFiles, selectedFileIds])
 
   const toggleFileSelection = (fileId) => {
     setSelectedFileIds((previous) => {
@@ -92,7 +92,7 @@ const GeneratePage = () => {
           <div>
             <p className="section-label">Selected Knowledge Sources</p>
             <ul className="knowledge-chip-list">
-              {repositoryFiles.map((file) => {
+              {workspaceFiles.map((file) => {
                 const isSelected = selectedFileIds.includes(file.id)
                 return (
                   <li key={file.id}>

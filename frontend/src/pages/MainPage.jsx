@@ -6,10 +6,10 @@ import {
   createWorkspace,
   getWorkspaceFiles,
   getWorkspaces,
-} from '../services/repositoryService'
+} from '../services/workspaceContainerService'
 import { getGeneratedRuns } from '../services/workspaceService'
 
-const RepositoriesPage = () => {
+const MainPage = () => {
   const [workspaces, setWorkspaces] = useState([])
   const [workspaceStats, setWorkspaceStats] = useState({})
   const [recentGeneratedDocs, setRecentGeneratedDocs] = useState([])
@@ -226,4 +226,4 @@ const RepositoriesPage = () => {
   )
 }
 
-export default RepositoriesPage
+export default MainPage
