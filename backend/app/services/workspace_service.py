@@ -11,14 +11,16 @@ from app.models.workspace_run import WorkspaceRun
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.utils.ids import new_id
 from app.utils.markdown_blocks import build_default_blocks
-
+from app.integrations.mattin_client import MattinClient
 
 class WorkspaceService:
-    def __init__(self, repository: WorkspaceRepository) -> None:
+    def __init__(self, repository: WorkspaceRepository, mattin_client: MattinClient) -> None:
         self.repository = repository
+        self.mattin_client = mattin_client
 
     def list_workspaces(self, owner_id: str) -> list[Workspace]:
-        return self.repository.list_workspaces(owner_id)
+        return self.mattin_client.get_all_repositories()
+        #return self.repository.list_workspaces(owner_id)
 
     def create_workspace(self, owner_id: str, name: str, description: str) -> Workspace:
         if not name.strip():
