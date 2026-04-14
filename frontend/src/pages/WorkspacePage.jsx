@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import BlockList from '../components/editor/BlockList'
 import AppShell from '../components/layout/AppShell'
-import { getWorkspaceById } from '../services/repositoryService'
+import { getWorkspaceById } from '../services/workspaceContainerService'
 import { getGeneratedRunById } from '../services/workspaceService'
 
 const WorkspacePage = () => {

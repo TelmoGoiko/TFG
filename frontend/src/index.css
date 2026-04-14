@@ -113,6 +113,7 @@ a {
 
 .shell-grid.without-sidebar .content-area {
   width: min(1320px, 100%);
+  margin-inline: auto;
 }
 
 .left-sidebar {
