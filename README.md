@@ -55,8 +55,35 @@ npm run dev
 - `GET /api/v1/items`
 - `POST /api/v1/items`
 
+## Flujo de generacion por bloques (agent-ready)
+
+- `POST /api/v1/workspaces/{workspace_id}/generated`
+- Crea un run de documento y genera bloques markdown.
+- Si `MATTIN_GENERATION_AGENT_ID` esta configurado, usa el agente de Mattin y espera un JSON de bloques.
+- Si el agente no responde en formato valido, aplica fallback local con plantilla base.
+
+## Chat por bloque con agente
+
+- `POST /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks/{block_id}/agent-chat`
+- Registra mensaje de usuario y respuesta de assistant para el bloque.
+- Si el agente devuelve `updated_markdown`, puede auto-aplicarse al bloque (`auto_apply=true`).
+
+## Servidor MCP del backend
+
+- `POST /mcp/v1/id/{app_id}/{server_id}`
+- `POST /mcp/v1/{app_slug}/{server_slug}`
+- Methods soportados (JSON-RPC):
+- `initialize`
+- `tools/list`
+- `tools/call`
+- Tools disponibles:
+- `get_document_outline`
+- `rewrite_block`
+- `review_consistency`
+
 ## Notas
 
 - Por defecto el backend espera PostgreSQL en `localhost:5432` con DB `tfg_db`.
 - En esta maquina se configuro `.env` a `POSTGRES_PORT=55432` por conflicto de puertos.
 - La migracion inicial habilita `vector` y crea tabla `item_embeddings`.
+- Si configuras `MCP_SERVER_TOKEN`, el endpoint MCP requiere `Authorization: Bearer <token>` o header `x-mcp-token`.

@@ -1,18 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
-const ChatPanel = ({ messages, onSend, selectedSnippet }) => {
+const ChatPanel = ({ messages, onSend, onClear, isClearing, isSending }) => {
   const [draft, setDraft] = useState('')
-
-  const mentionLabel = useMemo(() => {
-    if (!selectedSnippet) {
-      return 'No text selected'
-    }
-    return `Current selection: "${selectedSnippet.slice(0, 96)}"`
-  }, [selectedSnippet])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-    if (!draft.trim()) {
+    if (!draft.trim() || isSending) {
       return
     }
 
@@ -20,20 +13,11 @@ const ChatPanel = ({ messages, onSend, selectedSnippet }) => {
     setDraft('')
   }
 
-  const addSnippetToDraft = () => {
-    if (!selectedSnippet) {
-      return
-    }
-
-    const mention = `@snippet: "${selectedSnippet}"`
-    setDraft((previous) => (previous ? `${previous}\n${mention}` : mention))
-  }
-
   return (
     <aside className="chat-panel">
       <div className="chat-head">
         <h3>Editing agent</h3>
-        <p>{mentionLabel}</p>
+        <p>Chat scoped to this block only.</p>
       </div>
 
       <div className="chat-stream">
@@ -57,16 +41,11 @@ const ChatPanel = ({ messages, onSend, selectedSnippet }) => {
           rows={5}
         />
         <div className="chat-actions">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={addSnippetToDraft}
-            disabled={!selectedSnippet}
-          >
-            Mention selection
+          <button type="button" className="btn btn-ghost" onClick={onClear} disabled={isClearing}>
+            {isClearing ? 'Clearing...' : 'Clear history'}
           </button>
-          <button className="btn" type="submit">
-            Send
+          <button className="btn" type="submit" disabled={isSending || !draft.trim()}>
+            {isSending ? 'Thinking...' : 'Send'}
           </button>
         </div>
       </form>

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi import File, UploadFile
 from fastapi.responses import Response
@@ -6,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.db.dependencies import get_db
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.workspace import (
+    BlockAgentChatRequest,
+    BlockAgentChatResponse,
     DocumentCreate,
     DocumentResponse,
     BlockResponse,
@@ -22,9 +26,10 @@ from app.services.workspace_service import WorkspaceService
 from app.integrations.mattin_client import MattinClient
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
+logger = logging.getLogger(__name__)
 
 
-@router.get("", response_model=dict)
+@router.get("", response_model=list[WorkspaceResponse])
 def list_workspaces(
     owner_id: str,
     db: Session = Depends(get_db),
@@ -216,6 +221,13 @@ def create_generated_run(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    logger.info(
+        "POST generated run completed. workspace_id=%s run_id=%s status=%s",
+        workspace_id,
+        run.id,
+        run.status,
+    )
+
     return WorkspaceRunResponse.model_validate(run, from_attributes=True)
 
 
@@ -227,7 +239,23 @@ def get_generated_run(workspace_id: str, run_id: str, db: Session = Depends(get_
     if run is None or run.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
+    logger.info(
+        "GET generated run. workspace_id=%s run_id=%s status=%s",
+        workspace_id,
+        run.id,
+        run.status,
+    )
+
     return WorkspaceRunResponse.model_validate(run, from_attributes=True)
+
+
+@router.delete("/{workspace_id}/generated/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_generated_run(workspace_id: str, run_id: str, db: Session = Depends(get_db)) -> None:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+    deleted = service.delete_run(workspace_id=workspace_id, run_id=run_id)
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
 
 @router.get("/{workspace_id}/generated/{run_id}/blocks", response_model=list[BlockResponse])
@@ -238,6 +266,13 @@ def list_blocks(workspace_id: str, run_id: str, db: Session = Depends(get_db)) -
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
     blocks = service.list_blocks(run_id)
+    logger.info(
+        "GET generated blocks. workspace_id=%s run_id=%s blocks=%s titles=%s",
+        workspace_id,
+        run_id,
+        len(blocks),
+        [block.title for block in blocks],
+    )
     return [BlockResponse.model_validate(block, from_attributes=True) for block in blocks]
 
 
@@ -328,3 +363,55 @@ def create_message(
     )
 
     return ChatMessageResponse.model_validate(message, from_attributes=True)
+
+
+@router.delete(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/messages",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def clear_messages(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    db: Session = Depends(get_db),
+) -> None:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        service.clear_block_messages(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/agent-chat",
+    response_model=BlockAgentChatResponse,
+)
+def chat_with_block_agent(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    payload: BlockAgentChatRequest,
+    db: Session = Depends(get_db),
+) -> BlockAgentChatResponse:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        result = service.chat_with_block_agent(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            user_message=payload.user_message,
+            selected_snippet=payload.selected_snippet,
+            auto_apply=payload.auto_apply,
+            conversation_id=payload.conversation_id,
+            chat_agent_id=payload.chat_agent_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return BlockAgentChatResponse.model_validate(result)

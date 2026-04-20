@@ -8,7 +8,7 @@ import {
   getWorkspaceFiles,
   uploadWorkspaceFile,
 } from '../services/workspaceContainerService'
-import { getGeneratedRuns } from '../services/workspaceService'
+import { deleteGeneratedRun, getGeneratedRuns } from '../services/workspaceService'
 
 const WorkspaceDetailPage = () => {
   const { workspaceId } = useParams()
@@ -19,6 +19,7 @@ const WorkspaceDetailPage = () => {
   const [selectedFiles, setSelectedFiles] = useState([])
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState('')
+  const [deletingRunId, setDeletingRunId] = useState(null)
 
   const loadWorkspace = async () => {
     const [workspacePayload, filesPayload, generatedPayload] = await Promise.all([
@@ -80,6 +81,25 @@ const WorkspaceDetailPage = () => {
 
     await deleteWorkspace(workspaceId)
     navigate('/workspaces')
+  }
+
+  const onDeleteGeneratedDoc = async (runId) => {
+    const confirmed = window.confirm('Delete this generated document? This action cannot be undone.')
+    if (!confirmed) {
+      return
+    }
+
+    setError('')
+    setDeletingRunId(runId)
+
+    try {
+      await deleteGeneratedRun({ workspaceId, runId })
+      await loadWorkspace()
+    } catch (deletionError) {
+      setError(deletionError.message)
+    } finally {
+      setDeletingRunId(null)
+    }
   }
 
   const generatedSummary = useMemo(() => {
@@ -189,12 +209,22 @@ const WorkspaceDetailPage = () => {
                 <p className="chip">{generatedDoc.status.toUpperCase()}</p>
                 <h3>{generatedDoc.prompt}</h3>
                 <p className="hint">Last edit: {new Date(generatedDoc.createdAt).toLocaleString()}</p>
-                <Link
-                  className="btn btn-light"
-                  to={`/workspaces/${workspaceId}/generated/${generatedDoc.id}`}
-                >
-                  Open Draft
-                </Link>
+                <div className="row-actions">
+                  <Link
+                    className="btn btn-light"
+                    to={`/workspaces/${workspaceId}/generated/${generatedDoc.id}`}
+                  >
+                    Open Draft
+                  </Link>
+                  <button
+                    className="btn btn-light"
+                    type="button"
+                    disabled={deletingRunId === generatedDoc.id}
+                    onClick={() => onDeleteGeneratedDoc(generatedDoc.id)}
+                  >
+                    {deletingRunId === generatedDoc.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
               </article>
             ))}
           </div>

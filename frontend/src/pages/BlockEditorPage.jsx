@@ -1,24 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import ChatPanel from '../components/editor/ChatPanel'
 import AppShell from '../components/layout/AppShell'
 import { getWorkspaceById } from '../services/workspaceContainerService'
 import {
-  addChatMessage,
+  clearBlockMessages,
+  chatWithBlockAgent,
   getGeneratedRunById,
-  requestMockAssistantEdit,
   updateBlockContent,
 } from '../services/workspaceService'
 
 const BlockEditorPage = () => {
   const { workspaceId, runId, blockId } = useParams()
-  const contentRef = useRef(null)
 
   const [workspaceContainer, setWorkspaceContainer] = useState(null)
   const [workspace, setWorkspace] = useState(null)
   const [draftByBlock, setDraftByBlock] = useState({})
-  const [selectedSnippet, setSelectedSnippet] = useState('')
+  const [conversationIdByBlock, setConversationIdByBlock] = useState({})
   const [isSaving, setIsSaving] = useState(false)
+  const [isClearingChat, setIsClearingChat] = useState(false)
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -42,18 +43,6 @@ const BlockEditorPage = () => {
 
   const contentDraft = draftByBlock[blockId] ?? block?.content ?? ''
 
-  const onTextSelection = () => {
-    const selection = window.getSelection()
-    const selectedText = selection?.toString().trim() ?? ''
-
-    if (!selectedText || !contentRef.current?.contains(selection.anchorNode)) {
-      setSelectedSnippet('')
-      return
-    }
-
-    setSelectedSnippet(selectedText)
-  }
-
   const onSave = async () => {
     if (!block) {
       return
@@ -72,26 +61,58 @@ const BlockEditorPage = () => {
   }
 
   const onSendMessage = async (messageContent) => {
-    const mentions = selectedSnippet ? [selectedSnippet] : []
+    setIsSendingMessage(true)
 
-    await addChatMessage({
-      workspaceId,
-      runId,
-      blockId,
-      role: 'user',
-      content: messageContent,
-      mentions,
+    try {
+      const response = await chatWithBlockAgent({
+        workspaceId,
+        runId,
+        blockId,
+        userMessage: messageContent,
+        conversationId: conversationIdByBlock[blockId],
+      })
+
+      if (response.conversationId !== undefined && response.conversationId !== null) {
+        setConversationIdByBlock((previous) => ({
+          ...previous,
+          [blockId]: response.conversationId,
+        }))
+      }
+
+      if (response.applied && typeof response.updatedContent === 'string') {
+        setDraftByBlock((previous) => ({
+          ...previous,
+          [blockId]: response.updatedContent,
+        }))
+      }
+
+      const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
+      setWorkspace(nextWorkspace)
+    } finally {
+      setIsSendingMessage(false)
+    }
+  }
+
+  const onClearMessages = async () => {
+    if (!blockId) {
+      return
+    }
+
+    const confirmed = window.confirm('This will delete all previous messages in this block. Continue?')
+    if (!confirmed) {
+      return
+    }
+
+    setIsClearingChat(true)
+    await clearBlockMessages({ workspaceId, runId, blockId })
+    setConversationIdByBlock((previous) => {
+      const next = { ...previous }
+      delete next[blockId]
+      return next
     })
-
-    await requestMockAssistantEdit({
-      workspaceId,
-      runId,
-      blockId,
-      userMessage: messageContent,
-    })
-
     const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
     setWorkspace(nextWorkspace)
+    setIsClearingChat(false)
   }
 
   const sidebar = (
@@ -138,10 +159,9 @@ const BlockEditorPage = () => {
       }
     >
       <section className="editor-layout-prototype">
-        <article className="panel editor-panel" onMouseUp={onTextSelection}>
+        <article className="panel editor-panel">
           <h2>{block.title}</h2>
           <textarea
-            ref={contentRef}
             value={contentDraft}
             onChange={(event) => {
               setDraftByBlock((previous) => ({
@@ -153,7 +173,13 @@ const BlockEditorPage = () => {
           />
         </article>
 
-        <ChatPanel messages={messages} onSend={onSendMessage} selectedSnippet={selectedSnippet} />
+        <ChatPanel
+          messages={messages}
+          onSend={onSendMessage}
+          onClear={onClearMessages}
+          isClearing={isClearingChat}
+          isSending={isSendingMessage}
+        />
       </section>
     </AppShell>
   )

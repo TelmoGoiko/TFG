@@ -34,6 +34,15 @@ const normalizeMessage = (message) => {
   }
 }
 
+const normalizeBlockAgentChat = (payload) => {
+  return {
+    assistantMessage: payload.assistant_message,
+    conversationId: payload.conversation_id,
+    applied: payload.applied,
+    updatedContent: payload.updated_content,
+  }
+}
+
 const getGeneratedRuns = async (workspaceId) => {
   const payload = await request(`/workspaces/${workspaceId}/generated`)
   return payload.map(normalizeWorkspace)
@@ -73,6 +82,12 @@ const createGeneratedRun = async ({ workspaceId, prompt, referenceFiles }) => {
   return normalizeWorkspace(payload)
 }
 
+const deleteGeneratedRun = async ({ workspaceId, runId }) => {
+  await request(`/workspaces/${workspaceId}/generated/${runId}`, {
+    method: 'DELETE',
+  })
+}
+
 const updateBlockContent = async ({ workspaceId, runId, blockId, content }) => {
   const payload = await request(
     `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}`,
@@ -103,33 +118,42 @@ const addChatMessage = async ({ workspaceId, runId, blockId, role, content, ment
   return normalizeMessage(payload)
 }
 
-const requestMockAssistantEdit = async ({ workspaceId, runId, blockId, userMessage }) => {
-  const response = await request(`/agents/blocks/${blockId}/suggest-edit`, {
-    method: 'POST',
-    body: JSON.stringify({
-      user_message: userMessage,
-      selected_snippet: null,
-    }),
+const chatWithBlockAgent = async ({
+  workspaceId,
+  runId,
+  blockId,
+  userMessage,
+  autoApply,
+  conversationId,
+}) => {
+  const response = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/agent-chat`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        user_message: userMessage,
+        auto_apply: autoApply ?? true,
+        conversation_id: conversationId ?? null,
+      }),
+    },
+  )
+
+  return normalizeBlockAgentChat(response)
+}
+
+const clearBlockMessages = async ({ workspaceId, runId, blockId }) => {
+  await request(`/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/messages`, {
+    method: 'DELETE',
   })
-
-  const assistantResponse = response.assistant_message
-
-  await addChatMessage({
-    workspaceId,
-    runId,
-    blockId,
-    role: 'assistant',
-    content: assistantResponse,
-  })
-
-  return assistantResponse
 }
 
 export {
   getGeneratedRuns,
   getGeneratedRunById,
   createGeneratedRun,
+  deleteGeneratedRun,
   updateBlockContent,
   addChatMessage,
-  requestMockAssistantEdit,
+  chatWithBlockAgent,
+  clearBlockMessages,
 }
