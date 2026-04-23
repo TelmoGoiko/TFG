@@ -70,6 +70,8 @@ npm run dev
 
 ## Servidor MCP del backend
 
+- Configuracion del cliente mcp: 
+{"tfg-docs-tools": {"transport": "streamable_http", "url": "http://host.docker.internal:8010/mcp/v1/id/1/1"}}
 - `POST /mcp/v1/id/{app_id}/{server_id}`
 - `POST /mcp/v1/{app_slug}/{server_slug}`
 - Methods soportados (JSON-RPC):

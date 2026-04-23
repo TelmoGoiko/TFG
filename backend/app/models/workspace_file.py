@@ -19,5 +19,6 @@ class WorkspaceFile(Base):
     file_name: Mapped[str] = mapped_column(String(512), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(255), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    mattin_file_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     content_bytes: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

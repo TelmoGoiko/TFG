@@ -132,6 +132,58 @@ class MattinClient:
             return []
         return payload
 
+    def upload_repository_file(
+        self,
+        repository_id: str,
+        *,
+        file_name: str,
+        content_bytes: bytes,
+        mime_type: str,
+        timeout: int = 60,
+    ) -> dict[str, Any]:
+        payload = self._request_json(
+            "POST",
+            f"/app/{self.app_id}/resources/{repository_id}",
+            files={"files": (file_name, content_bytes, mime_type)},
+            timeout=timeout,
+        )
+        if isinstance(payload, dict):
+            return payload
+        raise MattinClientError("Unexpected response shape while uploading repository file")
+
+    def get_repository_resources(self, repository_id: str) -> list[dict[str, Any]]:
+        paths = (
+            f"/app/{self.app_id}/resources/{repository_id}",
+            f"/app/{self.app_id}/repositories/{repository_id}/docs/find",
+        )
+        last_error: MattinClientError | None = None
+        for path in paths:
+            try:
+                payload = self._request_json("GET", path)
+            except MattinClientError as exc:
+                last_error = exc
+                continue
+
+            if isinstance(payload, list):
+                return [item for item in payload if isinstance(item, dict)]
+
+            if isinstance(payload, dict):
+                for key in ("resources", "results", "created_resources", "docs", "files"):
+                    candidate = payload.get(key)
+                    if isinstance(candidate, list):
+                        return [item for item in candidate if isinstance(item, dict)]
+                return []
+
+        if last_error is not None:
+            raise last_error
+        return []
+
+    def delete_repository_resource(self, repository_id: str, resource_id: int) -> None:
+        self._request_json(
+            "DELETE",
+            f"/app/{self.app_id}/resources/{repository_id}/{resource_id}",
+        )
+
     # ============================== AGENTS ===============================
 
     def get_all_agents(self) -> list[dict[str, Any]]:

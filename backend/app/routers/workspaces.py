@@ -151,7 +151,10 @@ async def upload_file(
 @router.delete("/{workspace_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_file(workspace_id: str, file_id: str, db: Session = Depends(get_db)) -> None:
     service = WorkspaceService(WorkspaceRepository(db), MattinClient())
-    deleted = service.delete_file(file_id)
+    try:
+        deleted = service.delete_file(workspace_id=workspace_id, file_id=file_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")

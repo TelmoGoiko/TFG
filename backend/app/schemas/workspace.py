@@ -20,6 +20,7 @@ class WorkspaceResponse(BaseModel):
     owner_id: str
     name: str
     description: str
+    mattin_repository_id: str | None = None
     created_at: datetime
 
 
@@ -50,6 +51,7 @@ class WorkspaceFileResponse(BaseModel):
     file_name: str
     mime_type: str
     size_bytes: int
+    mattin_file_id: int | None = None
     created_at: datetime
 
 

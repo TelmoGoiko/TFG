@@ -36,7 +36,17 @@ class WorkspaceRepository:
         statement = select(Workspace).where(Workspace.id == workspace_id)
         return self.db.scalar(statement)
 
+    def get_workspace_by_mattin_repository_id(self, mattin_repository_id: str) -> Workspace | None:
+        statement = select(Workspace).where(Workspace.mattin_repository_id == mattin_repository_id)
+        return self.db.scalar(statement)
+
     def create_workspace(self, workspace: Workspace) -> Workspace:
+        self.db.add(workspace)
+        self.db.commit()
+        self.db.refresh(workspace)
+        return workspace
+
+    def save_workspace(self, workspace: Workspace) -> Workspace:
         self.db.add(workspace)
         self.db.commit()
         self.db.refresh(workspace)
@@ -81,6 +91,23 @@ class WorkspaceRepository:
         self.db.commit()
         self.db.refresh(workspace_file)
         return workspace_file
+
+    def save_file(self, workspace_file: WorkspaceFile) -> WorkspaceFile:
+        self.db.add(workspace_file)
+        self.db.commit()
+        self.db.refresh(workspace_file)
+        return workspace_file
+
+    def get_file_by_mattin_file_id(
+        self,
+        workspace_id: str,
+        mattin_file_id: int,
+    ) -> WorkspaceFile | None:
+        statement = select(WorkspaceFile).where(
+            WorkspaceFile.workspace_id == workspace_id,
+            WorkspaceFile.mattin_file_id == mattin_file_id,
+        )
+        return self.db.scalar(statement)
 
     def get_file(self, workspace_id: str, file_id: str) -> WorkspaceFile | None:
         statement = select(WorkspaceFile).where(

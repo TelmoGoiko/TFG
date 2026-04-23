@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     mattin_api_url: str
     mattin_api_key: str
     mattin_app_id: str
-    mattin_generation_agent_id: int | None = None
+    mattin_document_writer_agent_id: int | None = None
+    mattin_document_splitter_agent_id: int | None = None
     mattin_block_chat_agent_id: int | None = None
     mattin_generation_timeout_seconds: int = 45
     mattin_generation_max_retries: int = 1
@@ -17,7 +18,12 @@ class Settings(BaseSettings):
     mcp_server_token: str | None = None
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    @field_validator("mattin_generation_agent_id", "mattin_block_chat_agent_id", mode="before")
+    @field_validator(
+        "mattin_document_writer_agent_id",
+        "mattin_document_splitter_agent_id",
+        "mattin_block_chat_agent_id",
+        mode="before",
+    )
     @classmethod
     def empty_string_to_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
