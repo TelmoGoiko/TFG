@@ -39,6 +39,7 @@ const normalizeBlockAgentChat = (payload) => {
     assistantMessage: payload.assistant_message,
     conversationId: payload.conversation_id,
     applied: payload.applied,
+    proposedContent: payload.proposed_content,
     updatedContent: payload.updated_content,
   }
 }
@@ -123,7 +124,6 @@ const chatWithBlockAgent = async ({
   runId,
   blockId,
   userMessage,
-  autoApply,
   conversationId,
 }) => {
   const response = await request(
@@ -132,7 +132,7 @@ const chatWithBlockAgent = async ({
       method: 'POST',
       body: JSON.stringify({
         user_message: userMessage,
-        auto_apply: autoApply ?? true,
+        auto_apply: false,
         conversation_id: conversationId ?? null,
       }),
     },

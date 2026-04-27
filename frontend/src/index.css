@@ -608,6 +608,27 @@ select:focus {
   gap: 10px;
 }
 
+.proposal-box {
+  border: 1px solid #c9d6ef;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.proposal-box h4 {
+  font-size: 0.92rem;
+  color: #163574;
+}
+
+.proposal-box textarea {
+  border-radius: 10px;
+  border: 1px solid #d6deec;
+  background: #fff;
+  line-height: 1.45;
+}
+
 .chat-actions {
   display: flex;
   justify-content: space-between;

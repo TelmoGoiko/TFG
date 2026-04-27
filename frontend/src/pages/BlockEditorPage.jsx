@@ -16,8 +16,10 @@ const BlockEditorPage = () => {
   const [workspaceContainer, setWorkspaceContainer] = useState(null)
   const [workspace, setWorkspace] = useState(null)
   const [draftByBlock, setDraftByBlock] = useState({})
+  const [proposalByBlock, setProposalByBlock] = useState({})
   const [conversationIdByBlock, setConversationIdByBlock] = useState({})
   const [isSaving, setIsSaving] = useState(false)
+  const [isApplyingProposal, setIsApplyingProposal] = useState(false)
   const [isClearingChat, setIsClearingChat] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
 
@@ -42,6 +44,7 @@ const BlockEditorPage = () => {
   }, [workspace, blockId])
 
   const contentDraft = draftByBlock[blockId] ?? block?.content ?? ''
+  const proposedContent = proposalByBlock[blockId] ?? null
 
   const onSave = async () => {
     if (!block) {
@@ -86,11 +89,62 @@ const BlockEditorPage = () => {
         }))
       }
 
+      if (!response.applied && typeof response.proposedContent === 'string') {
+        setProposalByBlock((previous) => ({
+          ...previous,
+          [blockId]: response.proposedContent,
+        }))
+      }
+
       const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
       setWorkspace(nextWorkspace)
     } finally {
       setIsSendingMessage(false)
     }
+  }
+
+  const onApplyProposal = async () => {
+    if (!block || !proposedContent) {
+      return
+    }
+
+    setIsApplyingProposal(true)
+    try {
+      const updatedBlock = await updateBlockContent({
+        workspaceId,
+        runId,
+        blockId: block.id,
+        content: proposedContent,
+      })
+
+      setDraftByBlock((previous) => ({
+        ...previous,
+        [block.id]: updatedBlock.content,
+      }))
+
+      setProposalByBlock((previous) => {
+        const next = { ...previous }
+        delete next[block.id]
+        return next
+      })
+
+      const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
+      setWorkspace(nextWorkspace)
+    } finally {
+      setIsApplyingProposal(false)
+    }
+  }
+
+  const onRejectProposal = () => {
+    if (!blockId) {
+      return
+    }
+
+    setProposalByBlock((previous) => {
+      const next = { ...previous }
+      delete next[blockId]
+      return next
+    })
   }
 
   const onClearMessages = async () => {
@@ -175,8 +229,12 @@ const BlockEditorPage = () => {
 
         <ChatPanel
           messages={messages}
+          proposedContent={proposedContent}
           onSend={onSendMessage}
+          onApplyProposal={onApplyProposal}
+          onRejectProposal={onRejectProposal}
           onClear={onClearMessages}
+          isApplyingProposal={isApplyingProposal}
           isClearing={isClearingChat}
           isSending={isSendingMessage}
         />

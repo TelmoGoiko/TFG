@@ -97,4 +97,5 @@ class BlockAgentChatResponse(BaseModel):
     assistant_message: str
     conversation_id: int | None = None
     applied: bool
+    proposed_content: str | None = None
     updated_content: str | None = None

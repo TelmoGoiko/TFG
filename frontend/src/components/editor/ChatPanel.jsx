@@ -1,6 +1,16 @@
 import { useState } from 'react'
 
-const ChatPanel = ({ messages, onSend, onClear, isClearing, isSending }) => {
+const ChatPanel = ({
+  messages,
+  proposedContent,
+  onSend,
+  onApplyProposal,
+  onRejectProposal,
+  onClear,
+  isApplyingProposal,
+  isClearing,
+  isSending,
+}) => {
   const [draft, setDraft] = useState('')
 
   const handleSubmit = async (event) => {
@@ -32,6 +42,32 @@ const ChatPanel = ({ messages, onSend, onClear, isClearing, isSending }) => {
           ))
         )}
       </div>
+
+      {typeof proposedContent === 'string' && proposedContent.length > 0 && (
+        <section className="proposal-box">
+          <h4>Proposed rewrite</h4>
+          <p className="hint">Review this proposal before applying it to the chapter.</p>
+          <textarea value={proposedContent} readOnly rows={10} />
+          <div className="chat-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onRejectProposal}
+              disabled={isApplyingProposal}
+            >
+              Reject
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={onApplyProposal}
+              disabled={isApplyingProposal}
+            >
+              {isApplyingProposal ? 'Applying...' : 'Accept and apply'}
+            </button>
+          </div>
+        </section>
+      )}
 
       <form className="chat-form" onSubmit={handleSubmit}>
         <textarea

@@ -123,6 +123,7 @@ class WorkspaceBlockChatAgentService:
 
         agent_id = chat_agent_id if chat_agent_id is not None else settings.mattin_block_chat_agent_id
         assistant_message = ""
+        proposed_content: str | None = None
         updated_content: str | None = None
         applied = False
         final_conversation_id = conversation_id
@@ -155,9 +156,11 @@ class WorkspaceBlockChatAgentService:
                 assistant_message, candidate_markdown = self._extract_assistant_result(
                     response.get("response")
                 )
+                if candidate_markdown and candidate_markdown.strip():
+                    proposed_content = candidate_markdown.strip()
 
-                if auto_apply and candidate_markdown and candidate_markdown.strip():
-                    block.content = candidate_markdown.strip()
+                if auto_apply and proposed_content:
+                    block.content = proposed_content
                     saved_block = self.repository.save_block(block)
                     applied = True
                     updated_content = saved_block.content
@@ -174,5 +177,6 @@ class WorkspaceBlockChatAgentService:
             "assistant_message": assistant_message,
             "conversation_id": final_conversation_id,
             "applied": applied,
+            "proposed_content": proposed_content,
             "updated_content": updated_content,
         }
