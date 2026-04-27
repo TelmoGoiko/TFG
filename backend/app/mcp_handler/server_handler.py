@@ -13,7 +13,6 @@ from app.services.workspace_service import WorkspaceService
 _MCP_TOOL_ALIASES: dict[str, str] = {
     "get_document_outline": "workspace_get_run_outline",
     "review_consistency": "workspace_review_consistency",
-    "workspace.get_run_outline": "workspace_get_run_outline",
     "workspace.list_blocks": "workspace_list_blocks",
     "workspace.get_block": "workspace_get_block",
     "workspace.propose_block_rewrite": "workspace_propose_block_rewrite",
@@ -21,18 +20,6 @@ _MCP_TOOL_ALIASES: dict[str, str] = {
 }
 
 _MCP_TOOLS: dict[str, dict[str, Any]] = {
-    "workspace_get_run_outline": {
-        "name": "workspace_get_run_outline",
-        "description": "Get ordered block metadata for a generated run.",
-        "inputSchema": {
-            "type": "object",
-            "required": ["workspace_id", "run_id"],
-            "properties": {
-                "workspace_id": {"type": "string"},
-                "run_id": {"type": "string"},
-            },
-        },
-    },
     "workspace_list_blocks": {
         "name": "workspace_list_blocks",
         "description": "List all blocks and metadata for a generated run.",
@@ -91,17 +78,14 @@ _MCP_TOOLS: dict[str, dict[str, Any]] = {
 
 _ALLOWED_TOOLS_BY_ROLE: dict[str, set[str]] = {
     "writer": {
-        "workspace_get_run_outline",
         "workspace_list_blocks",
         "workspace_get_block",
     },
     "splitter": {
-        "workspace_get_run_outline",
         "workspace_list_blocks",
         "workspace_get_block",
     },
     "chat": {
-        "workspace_get_run_outline",
         "workspace_list_blocks",
         "workspace_get_block",
         "workspace_propose_block_rewrite",
@@ -209,16 +193,6 @@ def _call_tool(
 ) -> dict[str, Any]:
     resolved_tool_name = _MCP_TOOL_ALIASES.get(tool_name, tool_name)
 
-    if resolved_tool_name == "workspace_get_run_outline":
-        workspace_id = _require_string(arguments, "workspace_id")
-        run_id = _require_string(arguments, "run_id")
-        outline = service.get_run_outline(workspace_id=workspace_id, run_id=run_id)
-        return {
-            "workspace_id": workspace_id,
-            "run_id": run_id,
-            "blocks": outline,
-        }
-
     if resolved_tool_name == "workspace_list_blocks":
         workspace_id = _require_string(arguments, "workspace_id")
         run_id = _require_string(arguments, "run_id")
@@ -228,6 +202,7 @@ def _call_tool(
             "run_id": run_id,
             "blocks": outline,
         }
+
 
     if resolved_tool_name == "workspace_get_block":
         workspace_id = _require_string(arguments, "workspace_id")
