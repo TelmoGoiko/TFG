@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import BlockRelationships from '../components/editor/BlockRelationships'
 import ChatPanel from '../components/editor/ChatPanel'
+import ImpactSuggestions from '../components/editor/ImpactSuggestions'
 import AppShell from '../components/layout/AppShell'
 import { getWorkspaceById } from '../services/workspaceContainerService'
 import {
+  applyImpactSuggestion,
+  checkBlockImpact,
   clearBlockMessages,
   chatWithBlockAgent,
+  createBlockRelationship,
+  deleteBlockRelationship,
+  getBlockRelationships,
   getGeneratedRunById,
   updateBlockContent,
 } from '../services/workspaceService'
@@ -18,10 +25,13 @@ const BlockEditorPage = () => {
   const [draftByBlock, setDraftByBlock] = useState({})
   const [proposalByBlock, setProposalByBlock] = useState({})
   const [conversationIdByBlock, setConversationIdByBlock] = useState({})
+  const [relationships, setRelationships] = useState([])
+  const [impactSuggestions, setImpactSuggestions] = useState([])
   const [isSaving, setIsSaving] = useState(false)
   const [isApplyingProposal, setIsApplyingProposal] = useState(false)
   const [isClearingChat, setIsClearingChat] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [isApplyingImpact, setIsApplyingImpact] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -35,6 +45,11 @@ const BlockEditorPage = () => {
     )
   }, [workspaceId, runId])
 
+  useEffect(() => {
+    if (!blockId || !workspaceId || !runId) return
+    getBlockRelationships({ workspaceId, runId, blockId }).then(setRelationships)
+  }, [blockId, workspaceId, runId, workspace])
+
   const block = useMemo(() => {
     return workspace?.blocks.find((item) => item.id === blockId) ?? null
   }, [workspace, blockId])
@@ -46,21 +61,43 @@ const BlockEditorPage = () => {
   const contentDraft = draftByBlock[blockId] ?? block?.content ?? ''
   const proposedContent = proposalByBlock[blockId] ?? null
 
+  const loadRelationships = () => {
+    if (blockId) {
+      getBlockRelationships({ workspaceId, runId, blockId }).then(setRelationships)
+    }
+  }
+
+  const refreshWorkspace = async () => {
+    const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
+    setWorkspace(nextWorkspace)
+  }
+
   const onSave = async () => {
     if (!block) {
       return
     }
 
     setIsSaving(true)
-    await updateBlockContent({
-      workspaceId,
-      runId,
-      blockId: block.id,
-      content: contentDraft,
-    })
-    const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
-    setWorkspace(nextWorkspace)
-    setIsSaving(false)
+    try {
+      const impact = await checkBlockImpact({
+        workspaceId,
+        runId,
+        blockId: block.id,
+        newContent: contentDraft,
+      })
+      setImpactSuggestions(impact)
+
+      await updateBlockContent({
+        workspaceId,
+        runId,
+        blockId: block.id,
+        content: contentDraft,
+      })
+      await refreshWorkspace()
+      loadRelationships()
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const onSendMessage = async (messageContent) => {
@@ -96,8 +133,11 @@ const BlockEditorPage = () => {
         }))
       }
 
-      const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
-      setWorkspace(nextWorkspace)
+      if (Array.isArray(response.impactSuggestions)) {
+        setImpactSuggestions(response.impactSuggestions)
+      }
+
+      await refreshWorkspace()
     } finally {
       setIsSendingMessage(false)
     }
@@ -128,8 +168,7 @@ const BlockEditorPage = () => {
         return next
       })
 
-      const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
-      setWorkspace(nextWorkspace)
+      await refreshWorkspace()
     } finally {
       setIsApplyingProposal(false)
     }
@@ -164,9 +203,44 @@ const BlockEditorPage = () => {
       delete next[blockId]
       return next
     })
-    const nextWorkspace = await getGeneratedRunById({ workspaceId, runId })
-    setWorkspace(nextWorkspace)
+    await refreshWorkspace()
     setIsClearingChat(false)
+  }
+
+  const onCreateRelationship = async ({ targetBlockId, relationshipType, description }) => {
+    await createBlockRelationship({
+      workspaceId,
+      runId,
+      blockId,
+      targetBlockId,
+      relationshipType,
+      description,
+    })
+    loadRelationships()
+  }
+
+  const onDeleteRelationship = async (relationshipId) => {
+    await deleteBlockRelationship({ workspaceId, runId, blockId, relationshipId })
+    loadRelationships()
+  }
+
+  const onApplyImpact = async (suggestion) => {
+    setIsApplyingImpact(true)
+    try {
+      await applyImpactSuggestion({
+        workspaceId,
+        runId,
+        blockId: suggestion.affectedBlockId,
+        suggestion: suggestion.suggestion,
+      })
+      setImpactSuggestions((prev) => prev.filter((s) => s.affectedBlockId !== suggestion.affectedBlockId))
+    } finally {
+      setIsApplyingImpact(false)
+    }
+  }
+
+  const onDismissImpact = (affectedBlockId) => {
+    setImpactSuggestions((prev) => prev.filter((s) => s.affectedBlockId !== affectedBlockId))
   }
 
   const sidebar = (
@@ -213,19 +287,40 @@ const BlockEditorPage = () => {
       }
     >
       <section className="editor-layout-prototype">
-        <article className="panel editor-panel">
-          <h2>{block.title}</h2>
-          <textarea
-            value={contentDraft}
-            onChange={(event) => {
-              setDraftByBlock((previous) => ({
-                ...previous,
-                [blockId]: event.target.value,
-              }))
-            }}
-            rows={24}
-          />
-        </article>
+        <div className="editor-main-column">
+          <article className="panel editor-panel">
+            <h2>{block.title}</h2>
+            <textarea
+              value={contentDraft}
+              onChange={(event) => {
+                setDraftByBlock((previous) => ({
+                  ...previous,
+                  [blockId]: event.target.value,
+                }))
+              }}
+              rows={24}
+            />
+          </article>
+
+          <aside className="side-panel">
+            <ImpactSuggestions
+              suggestions={impactSuggestions}
+              onApply={onApplyImpact}
+              onDismiss={onDismissImpact}
+              workspaceId={workspaceId}
+              runId={runId}
+            />
+            <BlockRelationships
+              block={block}
+              blocks={workspace.blocks}
+              relationships={relationships}
+              onCreate={onCreateRelationship}
+              onDelete={onDeleteRelationship}
+              workspaceId={workspaceId}
+              runId={runId}
+            />
+          </aside>
+        </div>
 
         <ChatPanel
           messages={messages}

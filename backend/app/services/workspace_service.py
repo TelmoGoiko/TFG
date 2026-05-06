@@ -16,6 +16,8 @@ from app.models.workspace_run import WorkspaceRun
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.services.agents.workspace_block_chat_agent_service import WorkspaceBlockChatAgentService
 from app.services.agents.workspace_generation_agent_service import WorkspaceGenerationAgentService
+from app.services.block_impact_service import BlockImpactService
+from app.services.block_relationship_service import BlockRelationshipService
 from app.utils.ids import new_id
 from app.utils.markdown_blocks import build_default_blocks
 
@@ -28,6 +30,14 @@ class WorkspaceService:
         self.mattin_client = mattin_client
         self.generation_agent_service = WorkspaceGenerationAgentService(mattin_client=mattin_client)
         self.block_chat_agent_service = WorkspaceBlockChatAgentService(
+            repository=repository,
+            mattin_client=mattin_client,
+        )
+        self.relationship_service = BlockRelationshipService(
+            repository=repository,
+            mattin_client=mattin_client,
+        )
+        self.impact_service = BlockImpactService(
             repository=repository,
             mattin_client=mattin_client,
         )
@@ -509,6 +519,17 @@ class WorkspaceService:
             len(persisted_blocks),
             [block.title for block in persisted_blocks],
         )
+
+        self.relationship_service.detect_relationships_from_generation(
+            run_id=created_run.id,
+            blocks=persisted_blocks,
+        )
+        logger.info(
+            "Block relationships detected. run_id=%s relationships_count=%s",
+            created_run.id,
+            len(self.relationship_service.get_relationships_for_block(persisted_blocks[0].id)) if persisted_blocks else 0,
+        )
+
         return created_run
 
     def get_run(self, run_id: str) -> WorkspaceRun | None:
@@ -536,7 +557,11 @@ class WorkspaceService:
             return None
 
         block.content = content
-        return self.repository.save_block(block)
+        block.refresh_meta_on_save()
+        saved_block = self.repository.save_block(block)
+        self.relationship_service.update_block_metadata(block)
+
+        return saved_block
 
     def list_messages(self, block_id: str) -> list[ChatMessage]:
         return self.repository.list_messages(block_id)
@@ -581,7 +606,17 @@ class WorkspaceService:
         conversation_id: int | None = None,
         chat_agent_id: int | None = None,
     ) -> dict[str, Any]:
-        return self.block_chat_agent_service.chat_with_block_agent(
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        original_content = block.content
+
+        result = self.block_chat_agent_service.chat_with_block_agent(
             workspace_id=workspace_id,
             run_id=run_id,
             block_id=block_id,
@@ -591,6 +626,22 @@ class WorkspaceService:
             conversation_id=conversation_id,
             chat_agent_id=chat_agent_id,
         )
+
+        candidate_content = (
+            result.get("updated_content") if result.get("applied") else result.get("proposed_content")
+        )
+        if isinstance(candidate_content, str) and candidate_content.strip() and candidate_content != original_content:
+            impact_suggestions = self.impact_service.check_impact(
+                run_id=run_id,
+                block_id=block_id,
+                original_content=original_content,
+                new_content=candidate_content,
+            )
+        else:
+            impact_suggestions = []
+
+        result["impact_suggestions"] = impact_suggestions
+        return result
 
     def get_run_outline(self, workspace_id: str, run_id: str) -> list[dict[str, Any]]:
         run = self.repository.get_run(run_id)
@@ -649,4 +700,185 @@ class WorkspaceService:
             "run_id": run_id,
             "issue_count": len(issues),
             "issues": issues,
+        }
+
+    def get_block_relationships(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_id: str,
+    ) -> list[dict[str, Any]]:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        relationships = self.relationship_service.get_relationships_for_block(block_id)
+        blocks_map = {b.id: b for b in self.repository.list_blocks(run_id)}
+
+        result = []
+        for rel in relationships:
+            if rel.source_block_id == block_id:
+                other = blocks_map.get(rel.target_block_id)
+                direction = "outgoing"
+            else:
+                other = blocks_map.get(rel.source_block_id)
+                direction = "incoming"
+
+            result.append({
+                "id": rel.id,
+                "source_block_id": rel.source_block_id,
+                "target_block_id": rel.target_block_id,
+                "relationship_type": rel.relationship_type,
+                "description": rel.description,
+                "auto_created": rel.auto_created,
+                "created_at": rel.created_at,
+                "direction": direction,
+                "other_block": {
+                    "id": other.id if other else None,
+                    "title": other.title if other else "Unknown",
+                    "file_name": other.file_name if other else None,
+                } if other else None,
+            })
+
+        return result
+
+    def create_block_relationship(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_id: str,
+        target_block_id: str,
+        relationship_type: str,
+        description: str = "",
+    ) -> dict[str, Any]:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        target = self.repository.get_block(run_id, target_block_id)
+        if target is None:
+            raise ValueError("Target block not found")
+
+        rel = self.relationship_service.create_relationship(
+            workspace_run_id=run_id,
+            source_block_id=block_id,
+            target_block_id=target_block_id,
+            relationship_type=relationship_type,
+            description=description,
+            auto_created=False,
+        )
+
+        return {
+            "id": rel.id,
+            "source_block_id": rel.source_block_id,
+            "target_block_id": rel.target_block_id,
+            "relationship_type": rel.relationship_type,
+            "description": rel.description,
+            "auto_created": rel.auto_created,
+            "created_at": rel.created_at,
+        }
+
+    def delete_block_relationship(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_id: str,
+        relationship_id: str,
+    ) -> bool:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        from sqlalchemy import select
+        from app.models.block_relationship import BlockRelationship
+
+        stmt = select(BlockRelationship).where(BlockRelationship.id == relationship_id)
+        rel = self.repository.db.scalar(stmt)
+        if rel is None:
+            raise ValueError("Relationship not found")
+
+        if rel.source_block_id != block_id and rel.target_block_id != block_id:
+            raise ValueError("Relationship does not belong to this block")
+
+        return self.relationship_service.delete_relationship(relationship_id)
+
+    def check_block_impact(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_id: str,
+        new_content: str,
+    ) -> list[dict[str, Any]]:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        suggestions = self.impact_service.check_impact(
+            run_id=run_id,
+            block_id=block_id,
+            original_content=block.content,
+            new_content=new_content,
+        )
+
+        return [
+            {
+                "affected_block_id": s.affected_block_id,
+                "affected_block_title": s.affected_block_title,
+                "suggestion": s.suggestion,
+                "reason": s.reason,
+                "relationship_type": s.relationship_type,
+            }
+            for s in suggestions
+        ]
+
+    def apply_impact_suggestion(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_id: str,
+        suggestion: str,
+    ) -> dict[str, Any] | None:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        updated_block = self.impact_service.apply_suggestion(
+            run_id=run_id,
+            block_id=block_id,
+            suggestion=suggestion,
+        )
+
+        if updated_block is None:
+            return None
+
+        return {
+            "id": updated_block.id,
+            "workspace_run_id": updated_block.workspace_run_id,
+            "order_index": updated_block.order_index,
+            "title": updated_block.title,
+            "block_type": updated_block.block_type,
+            "summary": updated_block.summary,
+            "file_name": updated_block.file_name,
+            "content": updated_block.content,
+            "meta": updated_block.meta,
         }

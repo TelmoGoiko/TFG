@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from fastapi import HTTPException, Request, status
@@ -8,6 +9,9 @@ from app.core.config import settings
 from app.integrations.mattin_client import MattinClient
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.services.workspace_service import WorkspaceService
+
+
+logger = logging.getLogger(__name__)
 
 
 _MCP_TOOL_ALIASES: dict[str, str] = {
@@ -47,15 +51,17 @@ _MCP_TOOLS: dict[str, dict[str, Any]] = {
     },
     "workspace_propose_block_rewrite": {
         "name": "workspace_propose_block_rewrite",
-        "description": "Ask the block chat agent for a rewrite proposal without applying changes.",
+        "description": "Propose or apply a block rewrite. If updated_markdown is provided, apply directly; otherwise ask the block chat agent for a proposal.",
         "inputSchema": {
             "type": "object",
-            "required": ["workspace_id", "run_id", "block_id", "instructions"],
+            "required": ["workspace_id", "run_id", "block_id"],
             "properties": {
                 "workspace_id": {"type": "string"},
                 "run_id": {"type": "string"},
                 "block_id": {"type": "string"},
                 "instructions": {"type": "string"},
+                "updated_markdown": {"type": "string"},
+                "assistant_message": {"type": "string"},
                 "selected_snippet": {"type": "string"},
                 "conversation_id": {"type": "integer"},
                 "chat_agent_id": {"type": "integer"},
@@ -235,6 +241,39 @@ def _call_tool(
         workspace_id = _require_string(arguments, "workspace_id")
         run_id = _require_string(arguments, "run_id")
         block_id = _require_string(arguments, "block_id")
+
+        updated_markdown = arguments.get("updated_markdown")
+        if isinstance(updated_markdown, str) and updated_markdown.strip():
+            run = service.get_run(run_id)
+            if run is None or run.workspace_id != workspace_id:
+                raise ValueError("Generated run not found")
+
+            block = service.get_block(run_id=run_id, block_id=block_id)
+            if block is None:
+                raise ValueError("Block not found")
+
+            updated_block = service.update_block_content(
+                run_id=run_id,
+                block_id=block_id,
+                content=updated_markdown.strip(),
+            )
+            if updated_block is None:
+                raise ValueError("Block not found")
+
+            assistant_message = arguments.get("assistant_message")
+            if not isinstance(assistant_message, str) or not assistant_message.strip():
+                assistant_message = "Block updated."
+
+            return {
+                "workspace_id": workspace_id,
+                "run_id": run_id,
+                "block_id": block_id,
+                "assistant_message": assistant_message,
+                "applied": True,
+                "proposed_content": None,
+                "updated_content": updated_block.content,
+            }
+
         instructions = _require_string(arguments, "instructions")
 
         conversation_id = arguments.get("conversation_id")
@@ -306,6 +345,7 @@ def _handle_jsonrpc(
     role = _resolve_role_from_request(request)
 
     if method == "tools/list":
+        logger.info("MCP tools/list requested. role=%s", role)
         return _jsonrpc_success(
             request_id,
             {
@@ -334,6 +374,7 @@ def _handle_jsonrpc(
             )
 
         try:
+            logger.info("MCP tools/call requested. tool=%s role=%s", resolved_tool_name, role)
             tool_result = _call_tool(service=service, tool_name=tool_name, arguments=arguments)
         except ValueError as exc:
             return _jsonrpc_error(request_id, -32000, str(exc))

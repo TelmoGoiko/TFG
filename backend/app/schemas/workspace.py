@@ -64,10 +64,39 @@ class BlockResponse(BaseModel):
     summary: str
     file_name: str
     content: str
+    meta: str = "{}"
 
 
 class BlockUpdateRequest(BaseModel):
     content: str
+
+
+class BlockRelationshipCreate(BaseModel):
+    target_block_id: str = Field(min_length=1)
+    relationship_type: str = Field(min_length=1, max_length=50)
+    description: str = ""
+
+
+class BlockRelationshipResponse(BaseModel):
+    id: str
+    source_block_id: str
+    target_block_id: str
+    relationship_type: str
+    description: str
+    auto_created: bool
+    created_at: datetime
+
+
+class ImpactSuggestion(BaseModel):
+    affected_block_id: str
+    affected_block_title: str
+    suggestion: str
+    reason: str
+    relationship_type: str
+
+
+class ImpactSuggestionApplyRequest(BaseModel):
+    suggestion: str = Field(min_length=1)
 
 
 class ChatMessageCreate(BaseModel):
@@ -99,3 +128,4 @@ class BlockAgentChatResponse(BaseModel):
     applied: bool
     proposed_content: str | None = None
     updated_content: str | None = None
+    impact_suggestions: list[ImpactSuggestion] = Field(default_factory=list)

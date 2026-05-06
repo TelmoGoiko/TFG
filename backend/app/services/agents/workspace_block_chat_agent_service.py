@@ -39,7 +39,9 @@ class WorkspaceBlockChatAgentService:
 
     def _build_block_chat_message(
         self,
+        workspace_id: str,
         run_id: str,
+        block_id: str,
         block_title: str,
         block_type: str,
         block_content: str,
@@ -48,9 +50,12 @@ class WorkspaceBlockChatAgentService:
     ) -> str:
         outline = self.repository.list_blocks(run_id)
         outline_text = "\n".join(
-            f"- [{item.order_index + 1}] {item.title}: {item.summary}" for item in outline
+            f"- [{item.order_index + 1}] {item.title} (block_id: {item.id}): {item.summary}"
+            for item in outline
         )
         snippet_text = selected_snippet.strip() if selected_snippet else ""
+
+        related_context = self._build_related_blocks_context(run_id, block_id, block_title)
 
         return (
             "You are an editing assistant for one markdown block of a bigger document. "
@@ -62,15 +67,56 @@ class WorkspaceBlockChatAgentService:
             "Rules:\n"
             "- assistant_message: concise explanation of proposed changes.\n"
             "- updated_markdown: full rewritten markdown only if a rewrite is requested; otherwise null.\n"
+            "- When a rewrite is requested, produce the final markdown directly.\n"
+            "- When no rewrite is requested, set updated_markdown to null and reply only via assistant_message.\n"
+            "- If the user wants changes in another block, first call MCP tool 'workspace_list_blocks' to identify the target block_id, then apply using MCP tool 'workspace_propose_block_rewrite' with workspace_id, run_id, block_id, updated_markdown, and assistant_message.\n"
+            "- You already have the current block markdown; do not call MCP tool 'workspace_get_block' for it.\n"
+            "- If you need another block, use the block_id from the outline or call MCP tool 'workspace_list_blocks' to identify it.\n"
+            "- Do not delegate to other agents.\n"
             "- Keep consistency with the document outline.\n"
             "- Do not add markdown fences around JSON.\n\n"
+            f"Workspace id: {workspace_id}\n"
+            f"Run id: {run_id}\n"
+            f"Current block id: {block_id}\n\n"
             f"Document outline:\n{outline_text}\n\n"
+            f"{related_context}\n\n"
             f"Current block title: {block_title}\n"
             f"Current block type: {block_type}\n"
             f"Current block markdown:\n{block_content}\n\n"
             f"Selected snippet (if any):\n{snippet_text or 'none'}\n\n"
             f"User request:\n{user_message.strip()}"
         )
+
+    def _build_related_blocks_context(self, run_id: str, block_id: str, block_title: str) -> str:
+        from sqlalchemy import select
+        from app.models.block_relationship import BlockRelationship
+
+        run_blocks = self.repository.list_blocks(run_id)
+        run_block_ids = {b.id for b in run_blocks}
+        all_blocks = {b.id: b for b in run_blocks}
+
+        stmt = select(BlockRelationship).where(
+            BlockRelationship.relationship_type.in_(["references", "depends_on"]),
+            BlockRelationship.source_block_id.in_(run_block_ids),
+            BlockRelationship.target_block_id.in_(run_block_ids),
+        )
+        all_rels = list(self.repository.db.scalars(stmt))
+
+        related = []
+        for rel in all_rels:
+            if rel.source_block_id == block_id:
+                target = all_blocks.get(rel.target_block_id)
+                if target:
+                    related.append(f"- This block {rel.relationship_type} '{target.title}': {target.summary}")
+            elif rel.target_block_id == block_id:
+                source = all_blocks.get(rel.source_block_id)
+                if source:
+                    related.append(f"- '{source.title}' {rel.relationship_type} this block: {source.summary}")
+
+        if not related:
+            return ""
+
+        return "Related blocks context:\n" + "\n".join(related)
 
     def _extract_assistant_result(self, payload: Any) -> tuple[str, str | None]:
         if isinstance(payload, dict):
@@ -135,7 +181,9 @@ class WorkspaceBlockChatAgentService:
             )
         else:
             message = self._build_block_chat_message(
+                workspace_id=workspace_id,
                 run_id=run_id,
+                block_id=block_id,
                 block_title=block.title,
                 block_type=block.block_type,
                 block_content=block.content,

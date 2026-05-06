@@ -20,6 +20,7 @@ const normalizeBlock = (block) => {
     summary: block.summary,
     fileName: block.file_name,
     content: block.content,
+    meta: block.meta || '{}',
   }
 }
 
@@ -34,6 +35,16 @@ const normalizeMessage = (message) => {
   }
 }
 
+const normalizeImpactSuggestion = (s) => {
+  return {
+    affectedBlockId: s.affected_block_id,
+    affectedBlockTitle: s.affected_block_title,
+    suggestion: s.suggestion,
+    reason: s.reason,
+    relationshipType: s.relationship_type,
+  }
+}
+
 const normalizeBlockAgentChat = (payload) => {
   return {
     assistantMessage: payload.assistant_message,
@@ -41,6 +52,21 @@ const normalizeBlockAgentChat = (payload) => {
     applied: payload.applied,
     proposedContent: payload.proposed_content,
     updatedContent: payload.updated_content,
+    impactSuggestions: (payload.impact_suggestions || []).map(normalizeImpactSuggestion),
+  }
+}
+
+const normalizeRelationship = (rel) => {
+  return {
+    id: rel.id,
+    sourceBlockId: rel.source_block_id,
+    targetBlockId: rel.target_block_id,
+    relationshipType: rel.relationship_type,
+    description: rel.description,
+    autoCreated: rel.auto_created,
+    createdAt: rel.created_at,
+    direction: rel.direction,
+    otherBlock: rel.other_block,
   }
 }
 
@@ -147,6 +173,57 @@ const clearBlockMessages = async ({ workspaceId, runId, blockId }) => {
   })
 }
 
+const getBlockRelationships = async ({ workspaceId, runId, blockId }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/relationships`,
+  )
+  return payload.map(normalizeRelationship)
+}
+
+const createBlockRelationship = async ({ workspaceId, runId, blockId, targetBlockId, relationshipType, description }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/relationships`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        target_block_id: targetBlockId,
+        relationship_type: relationshipType,
+        description: description || '',
+      }),
+    },
+  )
+  return normalizeRelationship(payload)
+}
+
+const deleteBlockRelationship = async ({ workspaceId, runId, blockId, relationshipId }) => {
+  await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/relationships/${relationshipId}`,
+    { method: 'DELETE' },
+  )
+}
+
+const checkBlockImpact = async ({ workspaceId, runId, blockId, newContent }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/check-impact`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ content: newContent }),
+    },
+  )
+  return payload.map(normalizeImpactSuggestion)
+}
+
+const applyImpactSuggestion = async ({ workspaceId, runId, blockId, suggestion }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/apply-suggestion`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ suggestion }),
+    },
+  )
+  return normalizeBlock(payload)
+}
+
 export {
   getGeneratedRuns,
   getGeneratedRunById,
@@ -156,4 +233,9 @@ export {
   addChatMessage,
   chatWithBlockAgent,
   clearBlockMessages,
+  getBlockRelationships,
+  createBlockRelationship,
+  deleteBlockRelationship,
+  checkBlockImpact,
+  applyImpactSuggestion,
 }

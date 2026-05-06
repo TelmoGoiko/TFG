@@ -21,6 +21,10 @@ from app.schemas.workspace import (
     WorkspaceRunCreate,
     WorkspaceRunResponse,
     WorkspaceResponse,
+    BlockRelationshipCreate,
+    BlockRelationshipResponse,
+    ImpactSuggestion,
+    ImpactSuggestionApplyRequest,
 )
 from app.services.workspace_service import WorkspaceService
 from app.integrations.mattin_client import MattinClient
@@ -418,3 +422,138 @@ def chat_with_block_agent(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return BlockAgentChatResponse.model_validate(result)
+
+
+@router.get(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/relationships",
+    response_model=list[BlockRelationshipResponse],
+)
+def list_block_relationships(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    db: Session = Depends(get_db),
+) -> list[BlockRelationshipResponse]:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        relationships = service.get_block_relationships(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return [BlockRelationshipResponse.model_validate(r) for r in relationships]
+
+
+@router.post(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/relationships",
+    response_model=BlockRelationshipResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_block_relationship(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    payload: BlockRelationshipCreate,
+    db: Session = Depends(get_db),
+) -> BlockRelationshipResponse:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        relationship = service.create_block_relationship(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            target_block_id=payload.target_block_id,
+            relationship_type=payload.relationship_type,
+            description=payload.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return BlockRelationshipResponse.model_validate(relationship)
+
+
+@router.delete(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/relationships/{relationship_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_block_relationship(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    relationship_id: str,
+    db: Session = Depends(get_db),
+) -> None:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        deleted = service.delete_block_relationship(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            relationship_id=relationship_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Relationship not found")
+
+
+@router.post(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/check-impact",
+    response_model=list[ImpactSuggestion],
+)
+def check_block_impact(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    payload: BlockUpdateRequest,
+    db: Session = Depends(get_db),
+) -> list[ImpactSuggestion]:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        suggestions = service.check_block_impact(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            new_content=payload.content,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return [ImpactSuggestion.model_validate(s) for s in suggestions]
+
+
+@router.post(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/apply-suggestion",
+    response_model=BlockResponse,
+)
+def apply_impact_suggestion(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    payload: ImpactSuggestionApplyRequest,
+    db: Session = Depends(get_db),
+) -> BlockResponse:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        result = service.apply_impact_suggestion(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            suggestion=payload.suggestion,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to apply suggestion")
+
+    return BlockResponse.model_validate(result)

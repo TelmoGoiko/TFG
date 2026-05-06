@@ -68,6 +68,13 @@ npm run dev
 - Registra mensaje de usuario y respuesta de assistant para el bloque.
 - Si el agente devuelve `updated_markdown`, puede auto-aplicarse al bloque (`auto_apply=true`).
 
+## Agentes para relaciones e impacto
+
+Para habilitar deteccion de relaciones y sugerencias de impacto con `call_agent`, define en `backend/.env`:
+
+- `MATTIN_BLOCK_RELATIONSHIP_AGENT_ID=<agent_id>`
+- `MATTIN_BLOCK_IMPACT_AGENT_ID=<agent_id>`
+
 ## Servidor MCP del backend
 
 - Configuracion del cliente mcp: 
