@@ -137,7 +137,7 @@ class WorkspaceGenerationAgentService:
             "}\n\n"
             "Rules:\n"
             "- Include all the blocks that are relevant to the user request, decide whether to divide them as chapters or by paragraphs depending on the content.\n"
-            "- First block should be an index block with links to chapter files.\n"
+            "- Do NOT include an index block; the server will generate it.\n"
             "- Keep markdown practical and directly editable.\n"
             "- Do not wrap JSON in markdown fences.\n\n"
             f"User request:\n{prompt.strip()}\n\n"
@@ -164,7 +164,7 @@ class WorkspaceGenerationAgentService:
             "  ]\n"
             "}\n\n"
             "Rules:\n"
-            "- The first block can be index, but it is optional because the server will rebuild index links.\n"
+            "- Do NOT include an index block; the server will generate it.\n"
             "- Keep each block roughly below max_chars_per_block when possible.\n"
             "- Keep text unchanged unless minor restructuring is needed for splitting.\n"
             "- Do not wrap JSON in markdown fences.\n\n"
@@ -408,6 +408,10 @@ class WorkspaceGenerationAgentService:
             if not isinstance(item, dict):
                 continue
 
+            raw_block_type = str(item.get("block_type", "")).strip().lower()
+            if raw_block_type == "index":
+                continue
+
             markdown_content = item.get("markdown")
             if markdown_content is None:
                 markdown_content = item.get("content")
@@ -416,7 +420,7 @@ class WorkspaceGenerationAgentService:
             if not markdown_text:
                 continue
 
-            block_type = str(item.get("block_type", "chapter")).strip().lower() or "chapter"
+            block_type = raw_block_type or "chapter"
             if block_type not in {"chapter", "closing"}:
                 block_type = "chapter"
 
@@ -527,20 +531,22 @@ class WorkspaceGenerationAgentService:
 
         response: dict[str, Any] | None = None
         for attempt in range(1, total_attempts + 1):
+            attempt_timeout = timeout_seconds * attempt
             try:
                 response = self._call_agent_with_reference_fallback(
                     agent_id=agent_id,
                     message=message,
                     file_references=file_references,
-                    timeout_seconds=timeout_seconds,
+                    timeout_seconds=attempt_timeout,
                 )
                 break
             except MattinClientError as exc:
                 logger.warning(
-                    "Writer agent call failed. agent_id=%s attempt=%s/%s error=%s",
+                    "Writer agent call failed. agent_id=%s attempt=%s/%s timeout_s=%s error=%s",
                     agent_id,
                     attempt,
                     total_attempts,
+                    attempt_timeout,
                     exc,
                 )
                 if attempt == total_attempts:
@@ -641,20 +647,22 @@ class WorkspaceGenerationAgentService:
 
         response: dict[str, Any] | None = None
         for attempt in range(1, total_attempts + 1):
+            attempt_timeout = timeout_seconds * attempt
             try:
                 response = self._call_agent_with_reference_fallback(
                     agent_id=agent_id,
                     message=message,
                     file_references=file_references,
-                    timeout_seconds=timeout_seconds,
+                    timeout_seconds=attempt_timeout,
                 )
                 break
             except MattinClientError as exc:
                 logger.warning(
-                    "Generation agent call failed. agent_id=%s attempt=%s/%s error=%s",
+                    "Generation agent call failed. agent_id=%s attempt=%s/%s timeout_s=%s error=%s",
                     agent_id,
                     attempt,
                     total_attempts,
+                    attempt_timeout,
                     exc,
                 )
                 if attempt == total_attempts:

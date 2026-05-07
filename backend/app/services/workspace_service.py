@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from io import BytesIO
 import logging
+import os
 import re
 from typing import Any
 import zipfile
@@ -668,7 +669,20 @@ class WorkspaceService:
         issues: list[dict[str, str]] = []
 
         seen_titles: dict[str, str] = {}
-        file_names = {block.file_name for block in blocks}
+
+        def _normalize_file_name(value: str) -> str:
+            trimmed = value.strip()
+            trimmed = re.sub(r"^[./]+", "", trimmed)
+            return os.path.basename(trimmed).lower()
+
+        normalized_file_names: set[str] = set()
+        for block in blocks:
+            if not block.file_name:
+                continue
+            normalized = _normalize_file_name(block.file_name)
+            normalized_file_names.add(normalized)
+            if not normalized.endswith(".md"):
+                normalized_file_names.add(f"{normalized}.md")
 
         for block in blocks:
             title_key = block.title.strip().lower()
@@ -686,7 +700,8 @@ class WorkspaceService:
 
             linked_files = re.findall(r"\((?:\./)?([^\)\s]+\.md)\)", block.content)
             for linked_file in linked_files:
-                if linked_file not in file_names:
+                normalized_link = _normalize_file_name(linked_file)
+                if normalized_link not in normalized_file_names:
                     issues.append(
                         {
                             "type": "broken_block_link",
