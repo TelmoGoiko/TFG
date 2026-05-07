@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.block import Block
 from app.models.chat_message import ChatMessage
 from app.models.document import Document
+from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_file import WorkspaceFile
 from app.models.workspace_run import WorkspaceRun
@@ -21,11 +22,31 @@ class WorkspaceRepository:
         )
         return list(self.db.scalars(statement))
 
+    def get_user_by_id(self, user_id: str) -> User | None:
+        statement = select(User).where(User.id == user_id)
+        return self.db.scalar(statement)
+
+    def create_user(self, user: User) -> User:
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
     def get_workspace(self, workspace_id: str) -> Workspace | None:
         statement = select(Workspace).where(Workspace.id == workspace_id)
         return self.db.scalar(statement)
 
+    def get_workspace_by_mattin_repository_id(self, mattin_repository_id: str) -> Workspace | None:
+        statement = select(Workspace).where(Workspace.mattin_repository_id == mattin_repository_id)
+        return self.db.scalar(statement)
+
     def create_workspace(self, workspace: Workspace) -> Workspace:
+        self.db.add(workspace)
+        self.db.commit()
+        self.db.refresh(workspace)
+        return workspace
+
+    def save_workspace(self, workspace: Workspace) -> Workspace:
         self.db.add(workspace)
         self.db.commit()
         self.db.refresh(workspace)
@@ -71,6 +92,23 @@ class WorkspaceRepository:
         self.db.refresh(workspace_file)
         return workspace_file
 
+    def save_file(self, workspace_file: WorkspaceFile) -> WorkspaceFile:
+        self.db.add(workspace_file)
+        self.db.commit()
+        self.db.refresh(workspace_file)
+        return workspace_file
+
+    def get_file_by_mattin_file_id(
+        self,
+        workspace_id: str,
+        mattin_file_id: int,
+    ) -> WorkspaceFile | None:
+        statement = select(WorkspaceFile).where(
+            WorkspaceFile.workspace_id == workspace_id,
+            WorkspaceFile.mattin_file_id == mattin_file_id,
+        )
+        return self.db.scalar(statement)
+
     def get_file(self, workspace_id: str, file_id: str) -> WorkspaceFile | None:
         statement = select(WorkspaceFile).where(
             WorkspaceFile.workspace_id == workspace_id,
@@ -106,16 +144,24 @@ class WorkspaceRepository:
 
     def create_run_with_blocks(self, run: WorkspaceRun, blocks: list[Block]) -> WorkspaceRun:
         self.db.add(run)
+        self.db.commit()
+        self.db.refresh(run)
+
         for block in blocks:
             self.db.add(block)
 
         self.db.commit()
-        self.db.refresh(run)
         return run
 
     def get_run(self, run_id: str) -> WorkspaceRun | None:
         statement = select(WorkspaceRun).where(WorkspaceRun.id == run_id)
         return self.db.scalar(statement)
+
+    def delete_run(self, run_id: str) -> bool:
+        statement = delete(WorkspaceRun).where(WorkspaceRun.id == run_id)
+        result = self.db.execute(statement)
+        self.db.commit()
+        return result.rowcount > 0
 
     def list_runs(self, workspace_id: str) -> list[WorkspaceRun]:
         statement = (
@@ -159,3 +205,9 @@ class WorkspaceRepository:
         self.db.commit()
         self.db.refresh(message)
         return message
+
+    def delete_messages_by_block(self, block_id: str) -> int:
+        statement = delete(ChatMessage).where(ChatMessage.block_id == block_id)
+        result = self.db.execute(statement)
+        self.db.commit()
+        return result.rowcount or 0

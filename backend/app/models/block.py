@@ -1,3 +1,7 @@
+import json
+from datetime import datetime
+from hashlib import md5
+
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,3 +24,24 @@ class Block(Base):
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    meta: Mapped[str] = mapped_column("metadata", Text, nullable=False, default="{}")
+
+    def compute_content_hash(self) -> str:
+        return md5(self.content.encode("utf-8")).hexdigest()
+
+    def get_meta_dict(self) -> dict:
+        try:
+            return json.loads(self.meta)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+    def update_meta(self, updates: dict) -> None:
+        data = self.get_meta_dict()
+        data.update(updates)
+        self.meta = json.dumps(data, ensure_ascii=False)
+
+    def refresh_meta_on_save(self) -> None:
+        self.update_meta({
+            "content_hash": self.compute_content_hash(),
+            "last_modified": datetime.now().isoformat(),
+        })

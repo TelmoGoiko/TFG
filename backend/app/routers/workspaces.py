@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi import File, UploadFile
 from fastapi.responses import Response
@@ -10,21 +12,22 @@ from app.schemas.workspace import (
     DocumentResponse,
     BlockResponse,
     BlockUpdateRequest,
-    ChatMessageCreate,
-    ChatMessageResponse,
     WorkspaceFileResponse,
     WorkspaceCreate,
     WorkspaceRunCreate,
     WorkspaceRunResponse,
     WorkspaceResponse,
+    BlockRelationshipCreate,
+    BlockRelationshipResponse,
 )
 from app.services.workspace_service import WorkspaceService
 from app.integrations.mattin_client import MattinClient
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
+logger = logging.getLogger(__name__)
 
 
-@router.get("", response_model=dict)
+@router.get("", response_model=list[WorkspaceResponse])
 def list_workspaces(
     owner_id: str,
     db: Session = Depends(get_db),
@@ -146,7 +149,10 @@ async def upload_file(
 @router.delete("/{workspace_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_file(workspace_id: str, file_id: str, db: Session = Depends(get_db)) -> None:
     service = WorkspaceService(WorkspaceRepository(db), MattinClient())
-    deleted = service.delete_file(file_id)
+    try:
+        deleted = service.delete_file(workspace_id=workspace_id, file_id=file_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
@@ -216,6 +222,13 @@ def create_generated_run(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    logger.info(
+        "POST generated run completed. workspace_id=%s run_id=%s status=%s",
+        workspace_id,
+        run.id,
+        run.status,
+    )
+
     return WorkspaceRunResponse.model_validate(run, from_attributes=True)
 
 
@@ -227,7 +240,23 @@ def get_generated_run(workspace_id: str, run_id: str, db: Session = Depends(get_
     if run is None or run.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
+    logger.info(
+        "GET generated run. workspace_id=%s run_id=%s status=%s",
+        workspace_id,
+        run.id,
+        run.status,
+    )
+
     return WorkspaceRunResponse.model_validate(run, from_attributes=True)
+
+
+@router.delete("/{workspace_id}/generated/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_generated_run(workspace_id: str, run_id: str, db: Session = Depends(get_db)) -> None:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+    deleted = service.delete_run(workspace_id=workspace_id, run_id=run_id)
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
 
 @router.get("/{workspace_id}/generated/{run_id}/blocks", response_model=list[BlockResponse])
@@ -238,6 +267,13 @@ def list_blocks(workspace_id: str, run_id: str, db: Session = Depends(get_db)) -
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
     blocks = service.list_blocks(run_id)
+    logger.info(
+        "GET generated blocks. workspace_id=%s run_id=%s blocks=%s titles=%s",
+        workspace_id,
+        run_id,
+        len(blocks),
+        [block.title for block in blocks],
+    )
     return [BlockResponse.model_validate(block, from_attributes=True) for block in blocks]
 
 
@@ -277,54 +313,83 @@ def update_block(
     return BlockResponse.model_validate(block, from_attributes=True)
 
 
-@router.get("/{workspace_id}/generated/{run_id}/blocks/{block_id}/messages", response_model=list[ChatMessageResponse])
-def list_messages(
+@router.get(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/relationships",
+    response_model=list[BlockRelationshipResponse],
+)
+def list_block_relationships(
     workspace_id: str,
     run_id: str,
     block_id: str,
     db: Session = Depends(get_db),
-) -> list[ChatMessageResponse]:
+) -> list[BlockRelationshipResponse]:
     service = WorkspaceService(WorkspaceRepository(db), MattinClient())
 
-    run = service.get_run(run_id)
-    if run is None or run.workspace_id != workspace_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
+    try:
+        relationships = service.get_block_relationships(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    block = service.get_block(run_id, block_id)
-    if block is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
-
-    messages = service.list_messages(block_id)
-    return [ChatMessageResponse.model_validate(message, from_attributes=True) for message in messages]
+    return [BlockRelationshipResponse.model_validate(r) for r in relationships]
 
 
 @router.post(
-    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/messages",
-    response_model=ChatMessageResponse,
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/relationships",
+    response_model=BlockRelationshipResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_message(
+def create_block_relationship(
     workspace_id: str,
     run_id: str,
     block_id: str,
-    payload: ChatMessageCreate,
+    payload: BlockRelationshipCreate,
     db: Session = Depends(get_db),
-) -> ChatMessageResponse:
+) -> BlockRelationshipResponse:
     service = WorkspaceService(WorkspaceRepository(db), MattinClient())
 
-    run = service.get_run(run_id)
-    if run is None or run.workspace_id != workspace_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
+    try:
+        relationship = service.create_block_relationship(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            target_block_id=payload.target_block_id,
+            relationship_type=payload.relationship_type,
+            description=payload.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    block = service.get_block(run_id, block_id)
-    if block is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
+    return BlockRelationshipResponse.model_validate(relationship)
 
-    message = service.create_message(
-        block_id=block_id,
-        role=payload.role,
-        content=payload.content,
-        mentions=payload.mentions,
-    )
 
-    return ChatMessageResponse.model_validate(message, from_attributes=True)
+@router.delete(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/relationships/{relationship_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_block_relationship(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    relationship_id: str,
+    db: Session = Depends(get_db),
+) -> None:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        deleted = service.delete_block_relationship(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            relationship_id=relationship_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Relationship not found")
+
+

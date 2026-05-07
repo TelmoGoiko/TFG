@@ -10,6 +10,7 @@
   --deep: #071e5f;
   --deep-2: #0b2a7a;
   --danger: #b42318;
+  --accent: #0f8a76;
   --radius: 14px;
   --shadow: 0 12px 28px rgba(17, 24, 39, 0.08);
 }
@@ -524,6 +525,21 @@ select:focus {
   font-size: 0.8rem;
 }
 
+.block-list-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.block-rel-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #e8efff;
+  color: #163574;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
 .mini-doc-list li {
   border-radius: 9px;
 }
@@ -547,6 +563,11 @@ select:focus {
 .editor-layout-prototype {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr);
+  gap: 14px;
+}
+
+.editor-main-column {
+  display: grid;
   gap: 14px;
 }
 
@@ -608,17 +629,30 @@ select:focus {
   gap: 10px;
 }
 
-.chat-actions {
-  display: flex;
-  justify-content: space-between;
+.proposal-box {
+  border: 1px solid #c9d6ef;
+  border-radius: 10px;
+  background: #fbfdff;
+  padding: 10px;
+  display: grid;
   gap: 8px;
 }
 
-.empty-state {
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  padding: 16px;
-  display: grid;
+.proposal-box h4 {
+  font-size: 0.92rem;
+  color: #163574;
+}
+
+.proposal-box textarea {
+  border-radius: 10px;
+  border: 1px solid #d6deec;
+  background: #fff;
+  line-height: 1.45;
+}
+
+.chat-actions {
+  display: flex;
+  justify-content: space-between;
   gap: 8px;
 }
 

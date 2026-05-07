@@ -20,6 +20,7 @@ const normalizeBlock = (block) => {
     summary: block.summary,
     fileName: block.file_name,
     content: block.content,
+    meta: block.meta || '{}',
   }
 }
 
@@ -31,6 +32,41 @@ const normalizeMessage = (message) => {
     content: message.content,
     mentions: message.mentions,
     createdAt: message.created_at,
+  }
+}
+
+const normalizeImpactSuggestion = (s) => {
+  return {
+    affectedBlockId: s.affected_block_id,
+    affectedBlockTitle: s.affected_block_title,
+    suggestion: s.suggestion,
+    reason: s.reason,
+    relationshipType: s.relationship_type,
+  }
+}
+
+const normalizeBlockAgentChat = (payload) => {
+  return {
+    assistantMessage: payload.assistant_message,
+    conversationId: payload.conversation_id,
+    applied: payload.applied,
+    proposedContent: payload.proposed_content,
+    updatedContent: payload.updated_content,
+    impactSuggestions: (payload.impact_suggestions || []).map(normalizeImpactSuggestion),
+  }
+}
+
+const normalizeRelationship = (rel) => {
+  return {
+    id: rel.id,
+    sourceBlockId: rel.source_block_id,
+    targetBlockId: rel.target_block_id,
+    relationshipType: rel.relationship_type,
+    description: rel.description,
+    autoCreated: rel.auto_created,
+    createdAt: rel.created_at,
+    direction: rel.direction,
+    otherBlock: rel.other_block,
   }
 }
 
@@ -73,6 +109,12 @@ const createGeneratedRun = async ({ workspaceId, prompt, referenceFiles }) => {
   return normalizeWorkspace(payload)
 }
 
+const deleteGeneratedRun = async ({ workspaceId, runId }) => {
+  await request(`/workspaces/${workspaceId}/generated/${runId}`, {
+    method: 'DELETE',
+  })
+}
+
 const updateBlockContent = async ({ workspaceId, runId, blockId, content }) => {
   const payload = await request(
     `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}`,
@@ -103,33 +145,97 @@ const addChatMessage = async ({ workspaceId, runId, blockId, role, content, ment
   return normalizeMessage(payload)
 }
 
-const requestMockAssistantEdit = async ({ workspaceId, runId, blockId, userMessage }) => {
-  const response = await request(`/agents/blocks/${blockId}/suggest-edit`, {
-    method: 'POST',
-    body: JSON.stringify({
-      user_message: userMessage,
-      selected_snippet: null,
-    }),
+const chatWithBlockAgent = async ({
+  workspaceId,
+  runId,
+  blockId,
+  userMessage,
+  conversationId,
+}) => {
+  const response = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/agent-chat`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        user_message: userMessage,
+        auto_apply: false,
+        conversation_id: conversationId ?? null,
+      }),
+    },
+  )
+
+  return normalizeBlockAgentChat(response)
+}
+
+const clearBlockMessages = async ({ workspaceId, runId, blockId }) => {
+  await request(`/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/messages`, {
+    method: 'DELETE',
   })
+}
 
-  const assistantResponse = response.assistant_message
+const getBlockRelationships = async ({ workspaceId, runId, blockId }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/relationships`,
+  )
+  return payload.map(normalizeRelationship)
+}
 
-  await addChatMessage({
-    workspaceId,
-    runId,
-    blockId,
-    role: 'assistant',
-    content: assistantResponse,
-  })
+const createBlockRelationship = async ({ workspaceId, runId, blockId, targetBlockId, relationshipType, description }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/relationships`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        target_block_id: targetBlockId,
+        relationship_type: relationshipType,
+        description: description || '',
+      }),
+    },
+  )
+  return normalizeRelationship(payload)
+}
 
-  return assistantResponse
+const deleteBlockRelationship = async ({ workspaceId, runId, blockId, relationshipId }) => {
+  await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/relationships/${relationshipId}`,
+    { method: 'DELETE' },
+  )
+}
+
+const checkBlockImpact = async ({ workspaceId, runId, blockId, newContent }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/check-impact`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ content: newContent }),
+    },
+  )
+  return payload.map(normalizeImpactSuggestion)
+}
+
+const applyImpactSuggestion = async ({ workspaceId, runId, blockId, suggestion }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/apply-suggestion`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ suggestion }),
+    },
+  )
+  return normalizeBlock(payload)
 }
 
 export {
   getGeneratedRuns,
   getGeneratedRunById,
   createGeneratedRun,
+  deleteGeneratedRun,
   updateBlockContent,
   addChatMessage,
-  requestMockAssistantEdit,
+  chatWithBlockAgent,
+  clearBlockMessages,
+  getBlockRelationships,
+  createBlockRelationship,
+  deleteBlockRelationship,
+  checkBlockImpact,
+  applyImpactSuggestion,
 }

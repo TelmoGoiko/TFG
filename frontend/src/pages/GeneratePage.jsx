@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppShell from '../components/layout/AppShell'
 import { getWorkspaceById, getWorkspaceFiles } from '../services/workspaceContainerService'
-import { createGeneratedRun, getGeneratedRuns } from '../services/workspaceService'
+import { createGeneratedRun, deleteGeneratedRun, getGeneratedRuns } from '../services/workspaceService'
 
 const GeneratePage = () => {
   const { workspaceId } = useParams()
@@ -14,6 +14,7 @@ const GeneratePage = () => {
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [deletingRunId, setDeletingRunId] = useState(null)
 
   useEffect(() => {
     Promise.all([
@@ -64,6 +65,25 @@ const GeneratePage = () => {
       setError(submissionError.message)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const onDeleteGeneratedDoc = async (runId) => {
+    const confirmed = window.confirm('Delete this generated document? This action cannot be undone.')
+    if (!confirmed) {
+      return
+    }
+
+    setError('')
+    setDeletingRunId(runId)
+
+    try {
+      await deleteGeneratedRun({ workspaceId, runId })
+      setGeneratedDocs((previous) => previous.filter((generatedDoc) => generatedDoc.id !== runId))
+    } catch (deletionError) {
+      setError(deletionError.message)
+    } finally {
+      setDeletingRunId(null)
     }
   }
 
@@ -134,12 +154,22 @@ const GeneratePage = () => {
               <p className="chip">{generatedDoc.status.toUpperCase()}</p>
               <h3>{generatedDoc.prompt}</h3>
               <p className="hint">{new Date(generatedDoc.createdAt).toLocaleString()}</p>
-              <Link
-                className="btn btn-light"
-                to={`/workspaces/${workspaceId}/generated/${generatedDoc.id}`}
-              >
-                Open Draft
-              </Link>
+              <div className="row-actions">
+                <Link
+                  className="btn btn-light"
+                  to={`/workspaces/${workspaceId}/generated/${generatedDoc.id}`}
+                >
+                  Open Draft
+                </Link>
+                <button
+                  type="button"
+                  className="btn btn-light"
+                  disabled={deletingRunId === generatedDoc.id}
+                  onClick={() => onDeleteGeneratedDoc(generatedDoc.id)}
+                >
+                  {deletingRunId === generatedDoc.id ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </article>
           ))}
         </div>
