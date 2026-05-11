@@ -129,6 +129,41 @@ const updateBlockContent = async ({ workspaceId, runId, blockId, content }) => {
   return normalizeBlock(payload)
 }
 
+const createBlock = async ({
+  workspaceId,
+  runId,
+  title,
+  summary,
+  content,
+  blockType,
+  fileName,
+  orderIndex,
+  insertBeforeBlockId,
+  insertAfterBlockId,
+}) => {
+  const payload = await request(`/workspaces/${workspaceId}/generated/${runId}/blocks`, {
+    method: 'POST',
+    body: JSON.stringify({
+      title,
+      summary: summary ?? '',
+      content: content ?? '',
+      block_type: blockType ?? 'chapter',
+      file_name: fileName ?? null,
+      order_index: typeof orderIndex === 'number' ? orderIndex : null,
+      insert_before_block_id: insertBeforeBlockId ?? null,
+      insert_after_block_id: insertAfterBlockId ?? null,
+    }),
+  })
+
+  return normalizeBlock(payload)
+}
+
+const deleteBlock = async ({ workspaceId, runId, blockId }) => {
+  await request(`/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}`, {
+    method: 'DELETE',
+  })
+}
+
 const addChatMessage = async ({ workspaceId, runId, blockId, role, content, mentions }) => {
   const payload = await request(
     `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/messages`,
@@ -230,6 +265,8 @@ export {
   createGeneratedRun,
   deleteGeneratedRun,
   updateBlockContent,
+  createBlock,
+  deleteBlock,
   addChatMessage,
   chatWithBlockAgent,
   clearBlockMessages,

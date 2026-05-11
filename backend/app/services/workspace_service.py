@@ -20,7 +20,7 @@ from app.services.agents.workspace_generation_agent_service import WorkspaceGene
 from app.services.block_impact_service import BlockImpactService
 from app.services.block_relationship_service import BlockRelationshipService
 from app.utils.ids import new_id
-from app.utils.markdown_blocks import build_default_blocks
+from app.utils.markdown_blocks import build_default_blocks, create_file_name
 
 
 logger = logging.getLogger(__name__)
@@ -563,6 +563,130 @@ class WorkspaceService:
         self.relationship_service.update_block_metadata(block)
 
         return saved_block
+
+    def _normalize_insert_index(self, blocks: list[Block], desired_index: int | None) -> int:
+        if desired_index is None:
+            return len(blocks)
+        if desired_index < 0:
+            return 0
+        if desired_index > len(blocks):
+            return len(blocks)
+        return desired_index
+
+    def _build_unique_file_name(self, run_id: str, order_index: int, title: str) -> str:
+        base_name = create_file_name(order_index, title)
+        existing = {block.file_name for block in self.repository.list_blocks(run_id)}
+        if base_name not in existing:
+            return base_name
+
+        if base_name.endswith(".md"):
+            stem = base_name[:-3]
+            ext = ".md"
+        else:
+            stem = base_name
+            ext = ""
+
+        counter = 2
+        while counter < 1000:
+            candidate = f"{stem}-{counter}{ext}"
+            if candidate not in existing:
+                return candidate
+            counter += 1
+
+        return f"{stem}-{new_id()[:8]}{ext}"
+
+    def create_block(
+        self,
+        workspace_id: str,
+        run_id: str,
+        title: str,
+        summary: str,
+        content: str,
+        block_type: str,
+        file_name: str | None = None,
+        order_index: int | None = None,
+        insert_before_block_id: str | None = None,
+        insert_after_block_id: str | None = None,
+    ) -> Block:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        if insert_before_block_id and insert_after_block_id:
+            raise ValueError("Provide only one insert position")
+
+        blocks = self.repository.list_blocks(run_id)
+        target_index = None
+
+        if insert_before_block_id:
+            before_block = next((b for b in blocks if b.id == insert_before_block_id), None)
+            if before_block is None:
+                raise ValueError("Insert-before block not found")
+            target_index = before_block.order_index
+
+        if insert_after_block_id:
+            after_block = next((b for b in blocks if b.id == insert_after_block_id), None)
+            if after_block is None:
+                raise ValueError("Insert-after block not found")
+            target_index = after_block.order_index + 1
+
+        if target_index is None:
+            target_index = order_index
+
+        insert_index = self._normalize_insert_index(blocks, target_index)
+
+        for block in blocks:
+            if block.order_index >= insert_index:
+                block.order_index += 1
+                self.repository.save_block(block)
+
+        resolved_title = title.strip() or "Untitled block"
+        resolved_summary = summary.strip()
+        resolved_content = content or ""
+        resolved_block_type = block_type.strip() or "chapter"
+        resolved_file_name = (file_name or "").strip()
+        if not resolved_file_name:
+            resolved_file_name = self._build_unique_file_name(run_id, insert_index, resolved_title)
+        else:
+            existing_names = {block.file_name for block in blocks}
+            if resolved_file_name in existing_names:
+                resolved_file_name = self._build_unique_file_name(run_id, insert_index, resolved_title)
+
+        model = Block(
+            id=new_id(),
+            workspace_run_id=run_id,
+            order_index=insert_index,
+            title=resolved_title,
+            block_type=resolved_block_type,
+            summary=resolved_summary,
+            file_name=resolved_file_name,
+            content=resolved_content,
+        )
+        model.refresh_meta_on_save()
+        return self.repository.create_block(model)
+
+    def delete_block(self, workspace_id: str, run_id: str, block_id: str) -> bool:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        deleted_order = block.order_index
+        deleted = self.repository.delete_block(block_id)
+
+        if not deleted:
+            return False
+
+        blocks = self.repository.list_blocks(run_id)
+        for remaining in blocks:
+            if remaining.order_index > deleted_order:
+                remaining.order_index -= 1
+                self.repository.save_block(remaining)
+
+        return True
 
     def list_messages(self, block_id: str) -> list[ChatMessage]:
         return self.repository.list_messages(block_id)

@@ -71,6 +71,17 @@ class BlockUpdateRequest(BaseModel):
     content: str
 
 
+class BlockCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    summary: str = ""
+    content: str = ""
+    block_type: str = "chapter"
+    file_name: str | None = None
+    order_index: int | None = None
+    insert_before_block_id: str | None = None
+    insert_after_block_id: str | None = None
+
+
 class BlockRelationshipCreate(BaseModel):
     target_block_id: str = Field(min_length=1)
     relationship_type: str = Field(min_length=1, max_length=50)

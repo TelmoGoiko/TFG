@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import remarkGfm from 'remark-gfm'
 import BlockRelationships from '../components/editor/BlockRelationships'
 import ChatPanel from '../components/editor/ChatPanel'
 import ImpactSuggestions from '../components/editor/ImpactSuggestions'
@@ -11,6 +13,8 @@ import {
   clearBlockMessages,
   chatWithBlockAgent,
   createBlockRelationship,
+  createBlock,
+  deleteBlock,
   deleteBlockRelationship,
   getBlockRelationships,
   getGeneratedRunById,
@@ -19,6 +23,7 @@ import {
 
 const BlockEditorPage = () => {
   const { workspaceId, runId, blockId } = useParams()
+  const navigate = useNavigate()
 
   const [workspaceContainer, setWorkspaceContainer] = useState(null)
   const [workspace, setWorkspace] = useState(null)
@@ -32,6 +37,13 @@ const BlockEditorPage = () => {
   const [isClearingChat, setIsClearingChat] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isApplyingImpact, setIsApplyingImpact] = useState(false)
+  const [isCreatingBlock, setIsCreatingBlock] = useState(false)
+  const [isDeletingBlock, setIsDeletingBlock] = useState(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [newBlockTitle, setNewBlockTitle] = useState('')
+  const [newBlockSummary, setNewBlockSummary] = useState('')
+  const [newBlockContent, setNewBlockContent] = useState('')
+  const [newBlockType, setNewBlockType] = useState('chapter')
 
   useEffect(() => {
     Promise.all([
@@ -58,8 +70,39 @@ const BlockEditorPage = () => {
     return workspace?.chatByBlock?.[blockId] ?? []
   }, [workspace, blockId])
 
+  const orderedBlocks = useMemo(() => {
+    if (!workspace?.blocks) return []
+    return [...workspace.blocks].sort((a, b) => a.order - b.order)
+  }, [workspace])
+
   const contentDraft = draftByBlock[blockId] ?? block?.content ?? ''
   const proposedContent = proposalByBlock[blockId] ?? null
+
+  const normalizeFileName = (value) => {
+    if (!value) return ''
+    return value
+      .toLowerCase()
+      .replace(/^[./]+/, '')
+      .split('/')
+      .pop()
+  }
+
+  const blockByFileName = useMemo(() => {
+    const map = new Map()
+    ;(workspace?.blocks ?? []).forEach((item) => {
+      if (!item.fileName) return
+      const normalized = normalizeFileName(item.fileName)
+      if (normalized) {
+        map.set(normalized, item)
+        if (!normalized.endsWith('.md')) {
+          map.set(`${normalized}.md`, item)
+        }
+      }
+    })
+    return map
+  }, [workspace])
+
+  const isExternalLink = (href) => /^(https?:)?\/\//i.test(href) || href.startsWith('mailto:')
 
   const loadRelationships = () => {
     if (blockId) {
@@ -243,6 +286,69 @@ const BlockEditorPage = () => {
     setImpactSuggestions((prev) => prev.filter((s) => s.affectedBlockId !== affectedBlockId))
   }
 
+  const onCreateBlock = async (event) => {
+    event.preventDefault()
+    if (!newBlockTitle.trim()) {
+      return
+    }
+
+    const targetId = blockId || orderedBlocks[orderedBlocks.length - 1]?.id || null
+
+    setIsCreatingBlock(true)
+    try {
+      const created = await createBlock({
+        workspaceId,
+        runId,
+        title: newBlockTitle.trim(),
+        summary: newBlockSummary,
+        content: newBlockContent,
+        blockType: newBlockType,
+        insertAfterBlockId: targetId,
+      })
+
+      setNewBlockTitle('')
+      setNewBlockSummary('')
+      setNewBlockContent('')
+      setIsCreateModalOpen(false)
+      await refreshWorkspace()
+
+      if (created?.id) {
+        navigate(`/workspaces/${workspaceId}/generated/${runId}/blocks/${created.id}`)
+      }
+    } finally {
+      setIsCreatingBlock(false)
+    }
+  }
+
+  const onDeleteBlock = async () => {
+    if (!blockId) {
+      return
+    }
+
+    const confirmed = window.confirm('This will delete the current block. Continue?')
+    if (!confirmed) {
+      return
+    }
+
+    const currentIndex = orderedBlocks.findIndex((item) => item.id === blockId)
+    const nextBlockId =
+      orderedBlocks[currentIndex + 1]?.id || orderedBlocks[currentIndex - 1]?.id || null
+
+    setIsDeletingBlock(true)
+    try {
+      await deleteBlock({ workspaceId, runId, blockId })
+      await refreshWorkspace()
+
+      if (nextBlockId) {
+        navigate(`/workspaces/${workspaceId}/generated/${runId}/blocks/${nextBlockId}`)
+      } else {
+        navigate(`/workspaces/${workspaceId}/generated/${runId}`)
+      }
+    } finally {
+      setIsDeletingBlock(false)
+    }
+  }
+
   const sidebar = (
     <div className="workspace-sidebar-block">
       <p className="workspace-sidebar-kicker">Workspace</p>
@@ -252,7 +358,7 @@ const BlockEditorPage = () => {
         Chapter Index
       </Link>
       <ul className="mini-doc-list">
-        {workspace?.blocks.map((item) => (
+        {orderedBlocks.map((item) => (
           <li key={item.id} className={item.id === blockId ? 'active' : ''}>
             <Link to={`/workspaces/${workspaceId}/generated/${runId}/blocks/${item.id}`}>
               {item.title}
@@ -260,6 +366,13 @@ const BlockEditorPage = () => {
           </li>
         ))}
       </ul>
+      <section className="panel">
+        <p className="section-label">Add block</p>
+        <p className="hint">Create a new chapter in this run.</p>
+        <button className="btn btn-dark" type="button" onClick={() => setIsCreateModalOpen(true)}>
+          Add block
+        </button>
+      </section>
     </div>
   )
 
@@ -281,25 +394,73 @@ const BlockEditorPage = () => {
       subtitle={block.summary}
       sidebar={sidebar}
       actions={
-        <button type="button" className="btn btn-dark" onClick={onSave} disabled={isSaving}>
-          {isSaving ? 'Saving...' : 'Save Chapter'}
-        </button>
+        <>
+          <button type="button" className="btn btn-light" onClick={onDeleteBlock} disabled={isDeletingBlock}>
+            {isDeletingBlock ? 'Deleting...' : 'Delete Block'}
+          </button>
+          <button type="button" className="btn btn-dark" onClick={onSave} disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save Chapter'}
+          </button>
+        </>
       }
     >
       <section className="editor-layout-prototype">
         <div className="editor-main-column">
           <article className="panel editor-panel">
             <h2>{block.title}</h2>
-            <textarea
-              value={contentDraft}
-              onChange={(event) => {
-                setDraftByBlock((previous) => ({
-                  ...previous,
-                  [blockId]: event.target.value,
-                }))
-              }}
-              rows={24}
-            />
+            <div className="editor-split">
+              <div className="editor-input">
+                <div className="editor-label">Markdown</div>
+                <textarea
+                  value={contentDraft}
+                  onChange={(event) => {
+                    setDraftByBlock((previous) => ({
+                      ...previous,
+                      [blockId]: event.target.value,
+                    }))
+                  }}
+                  rows={24}
+                />
+              </div>
+              <div className="editor-preview">
+                <div className="editor-label">Preview</div>
+                <div className="markdown-preview">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ href, children }) => {
+                        if (!href) return <span>{children}</span>
+                        if (href.startsWith('#')) {
+                          return <a href={href}>{children}</a>
+                        }
+                        if (isExternalLink(href)) {
+                          return (
+                            <a href={href} target="_blank" rel="noreferrer">
+                              {children}
+                            </a>
+                          )
+                        }
+                        const [path] = href.split('#')
+                        const normalized = normalizeFileName(path)
+                        const target = blockByFileName.get(normalized)
+                        if (target) {
+                          return (
+                            <Link
+                              to={`/workspaces/${workspaceId}/generated/${runId}/blocks/${target.id}`}
+                            >
+                              {children}
+                            </Link>
+                          )
+                        }
+                        return <span className="broken-link">{children}</span>
+                      },
+                    }}
+                  >
+                    {contentDraft || ''}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            </div>
           </article>
 
           <aside className="side-panel">
@@ -334,6 +495,82 @@ const BlockEditorPage = () => {
           isSending={isSendingMessage}
         />
       </section>
+      {isCreateModalOpen && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add block"
+          onClick={() => setIsCreateModalOpen(false)}
+        >
+          <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-header">
+              <div>
+                <p className="section-label">Add block</p>
+                <h3>Create a new chapter</h3>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setIsCreateModalOpen(false)}
+              >
+                Close
+              </button>
+            </header>
+            <form className="stack-form" onSubmit={onCreateBlock}>
+              <label>
+                Title
+                <input
+                  value={newBlockTitle}
+                  onChange={(event) => setNewBlockTitle(event.target.value)}
+                  placeholder="New chapter title"
+                  required
+                />
+              </label>
+              <label>
+                Summary
+                <input
+                  value={newBlockSummary}
+                  onChange={(event) => setNewBlockSummary(event.target.value)}
+                  placeholder="Optional summary"
+                />
+              </label>
+              <label>
+                Type
+                <select
+                  value={newBlockType}
+                  onChange={(event) => setNewBlockType(event.target.value)}
+                >
+                  <option value="chapter">Chapter</option>
+                  <option value="index">Index</option>
+                  <option value="closing">Closing</option>
+                </select>
+              </label>
+              <label>
+                Initial content
+                <textarea
+                  value={newBlockContent}
+                  onChange={(event) => setNewBlockContent(event.target.value)}
+                  rows={6}
+                  placeholder="Starter markdown..."
+                />
+              </label>
+              <div className="modal-actions">
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button className="btn btn-dark" type="submit" disabled={isCreatingBlock}>
+                  {isCreatingBlock ? 'Creating...' : 'Create block'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }

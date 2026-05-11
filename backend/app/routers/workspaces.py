@@ -12,6 +12,7 @@ from app.schemas.workspace import (
     DocumentResponse,
     BlockResponse,
     BlockUpdateRequest,
+    BlockCreateRequest,
     WorkspaceFileResponse,
     WorkspaceCreate,
     WorkspaceRunCreate,
@@ -311,6 +312,63 @@ def update_block(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
 
     return BlockResponse.model_validate(block, from_attributes=True)
+
+
+@router.post(
+    "/{workspace_id}/generated/{run_id}/blocks",
+    response_model=BlockResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_block(
+    workspace_id: str,
+    run_id: str,
+    payload: BlockCreateRequest,
+    db: Session = Depends(get_db),
+) -> BlockResponse:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        block = service.create_block(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            title=payload.title,
+            summary=payload.summary,
+            content=payload.content,
+            block_type=payload.block_type,
+            file_name=payload.file_name,
+            order_index=payload.order_index,
+            insert_before_block_id=payload.insert_before_block_id,
+            insert_after_block_id=payload.insert_after_block_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return BlockResponse.model_validate(block, from_attributes=True)
+
+
+@router.delete(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_block(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    db: Session = Depends(get_db),
+) -> None:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        deleted = service.delete_block(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
 
 
 @router.get(
