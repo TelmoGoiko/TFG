@@ -241,7 +241,7 @@ class MattinClient:
         conversation_id: int | None = None,
         file_references: list[int] | None = None,
         search_params: dict[str, Any] | None = None,
-        timeout: int = 15,
+        timeout: int = 45,
     ) -> dict[str, Any]:
         data: dict[str, Any] = {"message": message}
         if conversation_id is not None:

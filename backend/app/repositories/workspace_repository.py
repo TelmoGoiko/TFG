@@ -192,6 +192,18 @@ class WorkspaceRepository:
         self.db.refresh(block)
         return block
 
+    def create_block(self, block: Block) -> Block:
+        self.db.add(block)
+        self.db.commit()
+        self.db.refresh(block)
+        return block
+
+    def delete_block(self, block_id: str) -> bool:
+        statement = delete(Block).where(Block.id == block_id)
+        result = self.db.execute(statement)
+        self.db.commit()
+        return result.rowcount > 0
+
     def list_messages(self, block_id: str) -> list[ChatMessage]:
         statement = (
             select(ChatMessage)

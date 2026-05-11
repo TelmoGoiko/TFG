@@ -58,7 +58,7 @@ class WorkspaceBlockChatAgentService:
         related_context = self._build_related_blocks_context(run_id, block_id, block_title)
 
         return (
-            "You are an editing assistant for one markdown block of a bigger document. "
+            "You are an editing assistant for a multi-block markdown document. "
             "Return ONLY valid JSON with this shape:\n"
             "{\n"
             '  "assistant_message": "string",\n'
@@ -69,7 +69,10 @@ class WorkspaceBlockChatAgentService:
             "- updated_markdown: full rewritten markdown only if a rewrite is requested; otherwise null.\n"
             "- When a rewrite is requested, produce the final markdown directly.\n"
             "- When no rewrite is requested, set updated_markdown to null and reply only via assistant_message.\n"
-            "- If the user wants changes in another block, first call MCP tool 'workspace_list_blocks' to identify the target block_id, then apply using MCP tool 'workspace_propose_block_rewrite' with workspace_id, run_id, block_id, updated_markdown, and assistant_message.\n"
+            "- If the user wants changes in other blocks, identify relevant blocks from the outline or call MCP tool 'workspace_list_blocks' to find them, then apply using MCP tool 'workspace_propose_block_rewrite' with workspace_id, run_id, block_id, updated_markdown, and assistant_message.\n"
+            "- If the user requests document-wide edits, do not ask for per-block instructions; apply reasonable updates across the necessary blocks and keep data consistent.\n"
+            "- If the user wants a new block, call MCP tool 'workspace_create_block' with workspace_id, run_id, title, summary, content, block_type, and an insert position (insert_before_block_id, insert_after_block_id, or order_index).\n"
+            "- If the user wants to delete a block, call MCP tool 'workspace_delete_block' with workspace_id, run_id, and block_id.\n"
             "- You already have the current block markdown; do not call MCP tool 'workspace_get_block' for it.\n"
             "- If you need another block, use the block_id from the outline or call MCP tool 'workspace_list_blocks' to identify it.\n"
             "- Do not delegate to other agents.\n"

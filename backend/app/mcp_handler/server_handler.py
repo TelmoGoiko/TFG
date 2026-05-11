@@ -21,6 +21,8 @@ _MCP_TOOL_ALIASES: dict[str, str] = {
     "workspace.get_block": "workspace_get_block",
     "workspace.propose_block_rewrite": "workspace_propose_block_rewrite",
     "workspace.review_consistency": "workspace_review_consistency",
+    "workspace.create_block": "workspace_create_block",
+    "workspace.delete_block": "workspace_delete_block",
 }
 
 _MCP_TOOLS: dict[str, dict[str, Any]] = {
@@ -80,6 +82,39 @@ _MCP_TOOLS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "workspace_create_block": {
+        "name": "workspace_create_block",
+        "description": "Create a new block and optionally insert it before or after another block.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["workspace_id", "run_id", "title"],
+            "properties": {
+                "workspace_id": {"type": "string"},
+                "run_id": {"type": "string"},
+                "title": {"type": "string"},
+                "summary": {"type": "string"},
+                "content": {"type": "string"},
+                "block_type": {"type": "string"},
+                "file_name": {"type": "string"},
+                "order_index": {"type": "integer"},
+                "insert_before_block_id": {"type": "string"},
+                "insert_after_block_id": {"type": "string"},
+            },
+        },
+    },
+    "workspace_delete_block": {
+        "name": "workspace_delete_block",
+        "description": "Delete a block and reindex the remaining blocks.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["workspace_id", "run_id", "block_id"],
+            "properties": {
+                "workspace_id": {"type": "string"},
+                "run_id": {"type": "string"},
+                "block_id": {"type": "string"},
+            },
+        },
+    },
 }
 
 _ALLOWED_TOOLS_BY_ROLE: dict[str, set[str]] = {
@@ -96,6 +131,8 @@ _ALLOWED_TOOLS_BY_ROLE: dict[str, set[str]] = {
         "workspace_get_block",
         "workspace_propose_block_rewrite",
         "workspace_review_consistency",
+        "workspace_create_block",
+        "workspace_delete_block",
     },
 }
 
@@ -303,6 +340,87 @@ def _call_tool(
         workspace_id = _require_string(arguments, "workspace_id")
         run_id = _require_string(arguments, "run_id")
         return service.review_run_consistency(workspace_id=workspace_id, run_id=run_id)
+
+    if resolved_tool_name == "workspace_create_block":
+        workspace_id = _require_string(arguments, "workspace_id")
+        run_id = _require_string(arguments, "run_id")
+        title = _require_string(arguments, "title")
+
+        summary = arguments.get("summary")
+        if not isinstance(summary, str):
+            summary = ""
+
+        content = arguments.get("content")
+        if not isinstance(content, str):
+            content = ""
+
+        block_type = arguments.get("block_type")
+        if not isinstance(block_type, str):
+            block_type = "chapter"
+
+        file_name = arguments.get("file_name")
+        if not isinstance(file_name, str):
+            file_name = None
+
+        order_index = arguments.get("order_index")
+        if not isinstance(order_index, int):
+            order_index = None
+
+        insert_before_block_id = arguments.get("insert_before_block_id")
+        if not isinstance(insert_before_block_id, str):
+            insert_before_block_id = None
+
+        insert_after_block_id = arguments.get("insert_after_block_id")
+        if not isinstance(insert_after_block_id, str):
+            insert_after_block_id = None
+
+        block = service.create_block(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            title=title,
+            summary=summary,
+            content=content,
+            block_type=block_type,
+            file_name=file_name,
+            order_index=order_index,
+            insert_before_block_id=insert_before_block_id,
+            insert_after_block_id=insert_after_block_id,
+        )
+
+        return {
+            "workspace_id": workspace_id,
+            "run_id": run_id,
+            "block": {
+                "id": block.id,
+                "order_index": block.order_index,
+                "title": block.title,
+                "summary": block.summary,
+                "block_type": block.block_type,
+                "file_name": block.file_name,
+                "content": block.content,
+            },
+        }
+
+    if resolved_tool_name == "workspace_delete_block":
+        workspace_id = _require_string(arguments, "workspace_id")
+        run_id = _require_string(arguments, "run_id")
+        block_id = _require_string(arguments, "block_id")
+
+        deleted = service.delete_block(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+        )
+
+        if not deleted:
+            raise ValueError("Block not found")
+
+        return {
+            "workspace_id": workspace_id,
+            "run_id": run_id,
+            "block_id": block_id,
+            "deleted": True,
+        }
 
     raise ValueError(f"Unknown tool '{resolved_tool_name}'")
 

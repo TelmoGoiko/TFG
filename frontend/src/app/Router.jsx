@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import ProtectedRoute from '../auth/ProtectedRoute'
 import BlockEditorPage from '../pages/BlockEditorPage'
+import DocumentViewPage from '../pages/DocumentViewPage'
 import GeneratePage from '../pages/GeneratePage'
 import LoginPage from '../pages/LoginPage'
 import MainPage from '../pages/MainPage'
@@ -24,6 +25,10 @@ const AppRouter = () => {
         <Route
           path="/workspaces/:workspaceId/generated/:runId/blocks/:blockId"
           element={<BlockEditorPage />}
+        />
+        <Route
+          path="/workspaces/:workspaceId/generated/:runId/view"
+          element={<DocumentViewPage />}
         />
 
         <Route path="/repositories" element={<Navigate to="/workspaces" replace />} />

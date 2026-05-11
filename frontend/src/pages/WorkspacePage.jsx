@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import BlockList from '../components/editor/BlockList'
 import AppShell from '../components/layout/AppShell'
 import { getWorkspaceById } from '../services/workspaceContainerService'
@@ -7,8 +7,10 @@ import { getGeneratedRunById } from '../services/workspaceService'
 
 const WorkspacePage = () => {
   const { workspaceId, runId } = useParams()
+  const navigate = useNavigate()
   const [workspaceContainer, setWorkspaceContainer] = useState(null)
   const [generatedDoc, setGeneratedDoc] = useState(null)
+  const [hasRedirected, setHasRedirected] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -21,6 +23,19 @@ const WorkspacePage = () => {
       },
     )
   }, [workspaceId, runId])
+
+  const orderedBlocks = useMemo(() => {
+    if (!generatedDoc?.blocks) return []
+    return [...generatedDoc.blocks].sort((a, b) => a.order - b.order)
+  }, [generatedDoc])
+
+  useEffect(() => {
+    if (hasRedirected) return
+    if (!generatedDoc || orderedBlocks.length === 0) return
+
+    setHasRedirected(true)
+    navigate(`/workspaces/${workspaceId}/generated/${runId}/blocks/${orderedBlocks[0].id}`)
+  }, [generatedDoc, hasRedirected, navigate, orderedBlocks, runId, workspaceId])
 
   const sidebar = useMemo(() => {
     if (!workspaceContainer) {

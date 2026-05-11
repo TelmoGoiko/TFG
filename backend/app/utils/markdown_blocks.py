@@ -1,8 +1,12 @@
+import unicodedata
+
 from app.utils.ids import new_id
 
 
 def slugify(value: str) -> str:
-    return "-".join("".join(ch for ch in value.lower() if ch.isalnum() or ch == " ").split())
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
+    return "-".join("".join(ch for ch in ascii_value.lower() if ch.isalnum() or ch == " ").split())
 
 
 def create_file_name(order_index: int, title: str) -> str:
