@@ -367,9 +367,6 @@ const BlockEditorPage = () => {
       <p className="workspace-sidebar-kicker">Workspace</p>
       <h2>{workspaceContainer?.name ?? 'Workspace'}</h2>
       <p className="hint">Editor mode</p>
-      <Link className="btn btn-light" to={`/workspaces/${workspaceId}/generated/${runId}`}>
-        Chapter Index
-      </Link>
       <ul className="mini-doc-list">
         {orderedBlocks.map((item) => (
           <li key={item.id} className={item.id === blockId ? 'active' : ''}>
@@ -408,6 +405,12 @@ const BlockEditorPage = () => {
       sidebar={sidebar}
       actions={
         <>
+          <Link
+            className="btn btn-light"
+            to={`/workspaces/${workspaceId}/generated/${runId}/view`}
+          >
+            See Full Document
+          </Link>
           <button type="button" className="btn btn-light" onClick={onDeleteBlock} disabled={isDeletingBlock}>
             {isDeletingBlock ? 'Deleting...' : 'Delete Block'}
           </button>

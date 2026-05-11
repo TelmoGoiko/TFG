@@ -27,7 +27,6 @@ const ChatPanel = ({
     <aside className="chat-panel">
       <div className="chat-head">
         <h3>Editing agent</h3>
-        <p>Chat scoped to this block only.</p>
       </div>
 
       <div className="chat-stream">

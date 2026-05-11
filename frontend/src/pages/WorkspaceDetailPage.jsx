@@ -206,6 +206,12 @@ const WorkspaceDetailPage = () => {
                   >
                     {deletingRunId === generatedDoc.id ? 'Deleting...' : 'Delete'}
                   </button>
+                  <Link
+                    className="btn btn-light"
+                    to={`/workspaces/${workspaceId}/generated/${generatedDoc.id}/view`}
+                  >
+                    See Full Document
+                  </Link>
                 </div>
               </article>
             ))}
