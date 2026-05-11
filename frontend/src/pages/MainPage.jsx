@@ -94,11 +94,6 @@ const MainPage = () => {
     <AppShell
       title="Your Workspaces"
       subtitle="Selecciona un entorno de proyecto para gestionar knowledge base y documentos generados."
-      actions={
-        <button className="btn btn-dark" type="submit" form="create-workspace-form">
-          + New Workspace
-        </button>
-      }
     >
       <section className="workspace-dashboard-grid">
         <article className="panel workspace-form-panel">

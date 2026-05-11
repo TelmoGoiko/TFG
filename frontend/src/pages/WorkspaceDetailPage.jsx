@@ -121,28 +121,10 @@ const WorkspaceDetailPage = () => {
     )
   }
 
-  const sidebar = (
-    <div className="workspace-sidebar-block">
-      <p className="workspace-sidebar-kicker">Project</p>
-      <h2>{workspace.name}</h2>
-      <p className="hint">{workspace.description || 'Sin descripcion de workspace.'}</p>
-      <Link className="btn btn-dark" to={`/workspaces/${workspaceId}/generate`}>
-        + New Document
-      </Link>
-      <nav className="workspace-sidebar-nav" aria-label="Workspace sections">
-        <a className="active" href="#knowledge-base">
-          Knowledge Base
-        </a>
-        <a href="#generated-docs">Generated Documents</a>
-      </nav>
-    </div>
-  )
-
   return (
     <AppShell
       title={workspace.name}
       subtitle="Manage input sources and generated architectural outputs."
-      sidebar={sidebar}
       actions={
         <div className="row-actions">
           <button type="button" className="btn btn-light" onClick={onDeleteWorkspace}>

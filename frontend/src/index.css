@@ -227,7 +227,7 @@ a {
 }
 
 .activity-panel {
-  grid-column: span 12;
+  grid-column: span 8;
 }
 
 .workspace-dashboard-grid > .panel:nth-child(2) {
@@ -862,7 +862,8 @@ select:focus {
 
   .workspace-form-panel,
   .workspace-list-panel,
-  .workspace-dashboard-grid > .panel:nth-child(2) {
+  .workspace-dashboard-grid > .panel:nth-child(2),
+  .activity-panel {
     grid-column: span 12;
   }
 

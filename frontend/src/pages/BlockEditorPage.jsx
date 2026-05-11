@@ -77,6 +77,7 @@ const BlockEditorPage = () => {
 
   const contentDraft = draftByBlock[blockId] ?? block?.content ?? ''
   const proposedContent = proposalByBlock[blockId] ?? null
+  const isDirty = Boolean(block && contentDraft !== block.content)
 
   const normalizeFileName = (value) => {
     if (!value) return ''
@@ -142,6 +143,18 @@ const BlockEditorPage = () => {
       setIsSaving(false)
     }
   }
+
+  useEffect(() => {
+    if (!block || !blockId) return
+    if (isSaving) return
+    if (contentDraft === block.content) return
+
+    const timeoutId = setTimeout(() => {
+      onSave()
+    }, 1500)
+
+    return () => clearTimeout(timeoutId)
+  }, [block, blockId, contentDraft, isSaving])
 
   const onSendMessage = async (messageContent) => {
     setIsSendingMessage(true)
@@ -398,9 +411,7 @@ const BlockEditorPage = () => {
           <button type="button" className="btn btn-light" onClick={onDeleteBlock} disabled={isDeletingBlock}>
             {isDeletingBlock ? 'Deleting...' : 'Delete Block'}
           </button>
-          <button type="button" className="btn btn-dark" onClick={onSave} disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save Chapter'}
-          </button>
+          <span className="hint">{isSaving ? 'Saving...' : isDirty ? 'Not Saved' : 'Saved'}</span>
         </>
       }
     >
