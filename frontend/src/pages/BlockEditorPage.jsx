@@ -16,6 +16,8 @@ import {
   createBlock,
   deleteBlock,
   deleteBlockRelationship,
+  dismissImpactSuggestion,
+  getImpactSuggestions,
   getBlockRelationships,
   getGeneratedRunById,
   updateBlockContent,
@@ -37,6 +39,7 @@ const BlockEditorPage = () => {
   const [isClearingChat, setIsClearingChat] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isApplyingImpact, setIsApplyingImpact] = useState(false)
+  const [isDismissingImpact, setIsDismissingImpact] = useState(false)
   const [isCreatingBlock, setIsCreatingBlock] = useState(false)
   const [isDeletingBlock, setIsDeletingBlock] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -61,6 +64,13 @@ const BlockEditorPage = () => {
     if (!blockId || !workspaceId || !runId) return
     getBlockRelationships({ workspaceId, runId, blockId }).then(setRelationships)
   }, [blockId, workspaceId, runId, workspace])
+
+  useEffect(() => {
+    if (!blockId || !workspaceId || !runId) return
+    getImpactSuggestions({ workspaceId, runId, blockId })
+      .then(setImpactSuggestions)
+      .catch(() => setImpactSuggestions([]))
+  }, [blockId, workspaceId, runId])
 
   const block = useMemo(() => {
     return workspace?.blocks.find((item) => item.id === blockId) ?? null
@@ -230,7 +240,39 @@ const BlockEditorPage = () => {
     }
   }
 
-  const onRejectProposal = () => {
+  const dismissAllImpactSuggestions = async () => {
+    if (!impactSuggestions.length) return
+    setIsDismissingImpact(true)
+    const pending = [...impactSuggestions]
+
+    try {
+      const results = await Promise.allSettled(
+        pending.map((suggestion) => (
+          dismissImpactSuggestion({
+            workspaceId,
+            runId,
+            blockId,
+            suggestionId: suggestion.id,
+          })
+        )),
+      )
+
+      const dismissedIds = new Set()
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          dismissedIds.add(pending[index].id)
+        }
+      })
+
+      if (dismissedIds.size) {
+        setImpactSuggestions((prev) => prev.filter((s) => !dismissedIds.has(s.id)))
+      }
+    } finally {
+      setIsDismissingImpact(false)
+    }
+  }
+
+  const onRejectProposal = async () => {
     if (!blockId) {
       return
     }
@@ -240,6 +282,8 @@ const BlockEditorPage = () => {
       delete next[blockId]
       return next
     })
+
+    await dismissAllImpactSuggestions()
   }
 
   const onClearMessages = async () => {
@@ -283,20 +327,105 @@ const BlockEditorPage = () => {
   const onApplyImpact = async (suggestion) => {
     setIsApplyingImpact(true)
     try {
-      await applyImpactSuggestion({
+      const updatedBlock = await applyImpactSuggestion({
         workspaceId,
         runId,
         blockId: suggestion.affectedBlockId,
         suggestion: suggestion.suggestion,
+        suggestionId: suggestion.id,
       })
-      setImpactSuggestions((prev) => prev.filter((s) => s.affectedBlockId !== suggestion.affectedBlockId))
+      if (updatedBlock?.id && typeof updatedBlock.content === 'string') {
+        setDraftByBlock((prev) => ({
+          ...prev,
+          [updatedBlock.id]: updatedBlock.content,
+        }))
+        setWorkspace((prev) => {
+          if (!prev) return prev
+          return {
+            ...prev,
+            blocks: prev.blocks.map((item) => (
+              item.id === updatedBlock.id ? { ...item, ...updatedBlock } : item
+            )),
+          }
+        })
+      }
+      setImpactSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id))
+      await refreshWorkspace()
     } finally {
       setIsApplyingImpact(false)
     }
   }
 
-  const onDismissImpact = (affectedBlockId) => {
-    setImpactSuggestions((prev) => prev.filter((s) => s.affectedBlockId !== affectedBlockId))
+  const onApplyAllImpact = async () => {
+    if (!impactSuggestions.length) return
+    setIsApplyingImpact(true)
+
+    const appliedIds = new Set()
+    try {
+      for (const suggestion of impactSuggestions) {
+        try {
+          const updatedBlock = await applyImpactSuggestion({
+            workspaceId,
+            runId,
+            blockId: suggestion.affectedBlockId,
+            suggestion: suggestion.suggestion,
+            suggestionId: suggestion.id,
+          })
+          if (updatedBlock?.id && typeof updatedBlock.content === 'string') {
+            setDraftByBlock((prev) => ({
+              ...prev,
+              [updatedBlock.id]: updatedBlock.content,
+            }))
+            setWorkspace((prev) => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                blocks: prev.blocks.map((item) => (
+                  item.id === updatedBlock.id ? { ...item, ...updatedBlock } : item
+                )),
+              }
+            })
+          }
+          appliedIds.add(suggestion.id)
+        } catch (error) {
+          // Keep failed suggestions in the list.
+        }
+      }
+
+      if (appliedIds.size) {
+        setImpactSuggestions((prev) => prev.filter((s) => !appliedIds.has(s.id)))
+        await refreshWorkspace()
+      }
+    } finally {
+      setIsApplyingImpact(false)
+    }
+  }
+
+  const onGoToImpactBlock = (suggestion) => {
+    if (!suggestion?.affectedBlockId) return
+    navigate(`/workspaces/${workspaceId}/generated/${runId}/blocks/${suggestion.affectedBlockId}`)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const onDismissImpact = (suggestionId) => {
+    const target = impactSuggestions.find((s) => s.id === suggestionId)
+    if (!target?.id) {
+      setImpactSuggestions((prev) => prev.filter((s) => s.id !== suggestionId))
+      return
+    }
+
+    dismissImpactSuggestion({
+      workspaceId,
+      runId,
+      blockId,
+      suggestionId,
+    }).finally(() => {
+      setImpactSuggestions((prev) => prev.filter((s) => s.id !== suggestionId))
+    })
+  }
+
+  const onDismissAllImpact = async () => {
+    await dismissAllImpactSuggestions()
   }
 
   const onCreateBlock = async (event) => {
@@ -481,7 +610,12 @@ const BlockEditorPage = () => {
             <ImpactSuggestions
               suggestions={impactSuggestions}
               onApply={onApplyImpact}
+              onApplyAll={onApplyAllImpact}
               onDismiss={onDismissImpact}
+              onDismissAll={onDismissAllImpact}
+              onGoTo={onGoToImpactBlock}
+              isApplying={isApplyingImpact}
+              isDismissing={isDismissingImpact}
               workspaceId={workspaceId}
               runId={runId}
             />

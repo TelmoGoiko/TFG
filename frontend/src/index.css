@@ -362,6 +362,11 @@ select:focus {
   transform: translateY(-1px);
 }
 
+.btn-sm {
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+
 .btn:disabled {
   opacity: 0.6;
   cursor: wait;
@@ -538,6 +543,148 @@ select:focus {
   color: #163574;
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+.impact-suggestions {
+  display: grid;
+  gap: 10px;
+}
+
+.impact-suggestions h4 {
+  font-size: 1rem;
+}
+
+.impact-suggestions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.impact-bulk-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.impact-suggestion-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  position: relative;
+  overflow: hidden;
+  --impact-accent: #2f74ff;
+  --impact-bg: rgba(47, 116, 255, 0.08);
+}
+
+.impact-suggestion-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--impact-accent);
+}
+
+.impact-suggestion-card.impact-critical,
+.impact-suggestion-card.impact-blocking,
+.impact-suggestion-card.impact-risk,
+.impact-suggestion-card.impact-danger {
+  --impact-accent: #d04437;
+  --impact-bg: rgba(208, 68, 55, 0.12);
+}
+
+.impact-suggestion-card.impact-dependent,
+.impact-suggestion-card.impact-downstream,
+.impact-suggestion-card.impact-affected,
+.impact-suggestion-card.impact-warning {
+  --impact-accent: #c57a1a;
+  --impact-bg: rgba(197, 122, 26, 0.12);
+}
+
+.impact-suggestion-card.impact-related,
+.impact-suggestion-card.impact-reference,
+.impact-suggestion-card.impact-informs,
+.impact-suggestion-card.impact-note {
+  --impact-accent: #2b6cb0;
+  --impact-bg: rgba(43, 108, 176, 0.12);
+}
+
+.impact-suggestion-card.is-open {
+  background: color-mix(in srgb, var(--impact-bg) 40%, #ffffff 60%);
+}
+
+.impact-suggestion-header {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 12px 14px 12px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  cursor: pointer;
+}
+
+.impact-suggestion-header:hover {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.impact-suggestion-main {
+  display: grid;
+  gap: 4px;
+}
+
+.impact-suggestion-title {
+  font-weight: 700;
+  font-size: 0.96rem;
+}
+
+.impact-suggestion-summary {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.impact-chevron {
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.impact-suggestion-body {
+  padding: 0 14px 14px 18px;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--impact-accent) 25%, transparent);
+  animation: rise 180ms ease;
+}
+
+.impact-reason {
+  margin-top: 10px;
+  color: #2b3140;
+  font-size: 0.9rem;
+}
+
+.impact-suggestion-text pre {
+  background: #0f172a;
+  color: #eef4ff;
+  padding: 12px;
+  border-radius: 10px;
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.impact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .mini-doc-list li {

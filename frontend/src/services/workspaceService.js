@@ -37,11 +37,16 @@ const normalizeMessage = (message) => {
 
 const normalizeImpactSuggestion = (s) => {
   return {
+    id: s.id,
+    sourceBlockId: s.source_block_id,
     affectedBlockId: s.affected_block_id,
     affectedBlockTitle: s.affected_block_title,
     suggestion: s.suggestion,
     reason: s.reason,
     relationshipType: s.relationship_type,
+    status: s.status,
+    conversationId: s.conversation_id,
+    createdAt: s.created_at,
   }
 }
 
@@ -248,15 +253,29 @@ const checkBlockImpact = async ({ workspaceId, runId, blockId, newContent }) => 
   return payload.map(normalizeImpactSuggestion)
 }
 
-const applyImpactSuggestion = async ({ workspaceId, runId, blockId, suggestion }) => {
+const applyImpactSuggestion = async ({ workspaceId, runId, blockId, suggestion, suggestionId }) => {
   const payload = await request(
     `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/apply-suggestion`,
     {
       method: 'POST',
-      body: JSON.stringify({ suggestion }),
+      body: JSON.stringify({ suggestion, suggestion_id: suggestionId ?? null }),
     },
   )
   return normalizeBlock(payload)
+}
+
+const getImpactSuggestions = async ({ workspaceId, runId, blockId }) => {
+  const payload = await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/impact-suggestions`,
+  )
+  return payload.map(normalizeImpactSuggestion)
+}
+
+const dismissImpactSuggestion = async ({ workspaceId, runId, blockId, suggestionId }) => {
+  await request(
+    `/workspaces/${workspaceId}/generated/${runId}/blocks/${blockId}/impact-suggestions/${suggestionId}/dismiss`,
+    { method: 'POST' },
+  )
 }
 
 export {
@@ -275,4 +294,6 @@ export {
   deleteBlockRelationship,
   checkBlockImpact,
   applyImpactSuggestion,
+  getImpactSuggestions,
+  dismissImpactSuggestion,
 }

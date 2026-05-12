@@ -99,15 +99,21 @@ class BlockRelationshipResponse(BaseModel):
 
 
 class ImpactSuggestion(BaseModel):
+    id: str
+    source_block_id: str
     affected_block_id: str
     affected_block_title: str
     suggestion: str
     reason: str
     relationship_type: str
+    status: str = "pending"
+    conversation_id: int | None = None
+    created_at: datetime | None = None
 
 
 class ImpactSuggestionApplyRequest(BaseModel):
     suggestion: str = Field(min_length=1)
+    suggestion_id: str | None = None
 
 
 class ChatMessageCreate(BaseModel):

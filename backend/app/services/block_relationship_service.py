@@ -107,7 +107,27 @@ class BlockRelationshipService:
                     message=prompt,
                     timeout=30,
                 )
-                relationships = self._parse_detection_response(payload.get("response"))
+                response_value = payload.get("response")
+                if isinstance(response_value, str):
+                    preview = response_value.strip().replace("\n", " ")[:500]
+                    logger.info(
+                        "Relationship detection response preview. run_id=%s preview=%s",
+                        run_id,
+                        preview,
+                    )
+                logger.info(
+                    "Relationship detection response received. run_id=%s blocks=%s agent_id=%s response_type=%s",
+                    run_id,
+                    len(blocks),
+                    self.relationship_agent_id,
+                    type(response_value).__name__,
+                )
+                relationships = self._parse_detection_response(response_value)
+                logger.info(
+                    "Relationship detection parsed. run_id=%s relationships=%s",
+                    run_id,
+                    len(relationships),
+                )
 
                 block_ids = {b.id for b in blocks}
                 for rel_data in relationships:
@@ -130,6 +150,8 @@ class BlockRelationshipService:
                             created.append(rel)
             except (MattinClientError, Exception) as exc:
                 logger.warning("AI relationship detection failed: %s", exc)
+        else:
+            logger.info("Relationship agent not configured (MATTIN_BLOCK_RELATIONSHIP_AGENT_ID).")
 
         for block in blocks:
             self.update_block_metadata(block)
@@ -156,7 +178,9 @@ class BlockRelationshipService:
             for b in block_contexts
         )
         return (
-            f"Analyze the following document blocks and identify relationships between them.\n\n"
+            f"Analyze the following document blocks and identify relationships between them. "
+            f"Be aggressive: if two blocks mention the same entity (company name, person, CIF/NIF, "
+            f"tenderer, address, dates, amounts, or the same form/model), create a relationship.\n\n"
             f"Blocks:\n{blocks_text}\n\n"
             f"Return a JSON array of relationships with this structure:\n"
             f'[\n  {{"source_block_id": "...", "target_block_id": "...", "relationship_type": "references|depends_on|contradicts|extends", "description": "..."}}\n]\n\n'
@@ -165,6 +189,7 @@ class BlockRelationshipService:
             f"- depends_on: block A needs information from block B to make sense\n"
             f"- contradicts: block A has information that conflicts with block B\n"
             f"- extends: block A expands on or adds detail to block B\n\n"
+            f"If there is any clear overlap of entities or fields between blocks, return at least one relationship.\n\n"
             f"Return ONLY the JSON array, no other text."
         )
 
