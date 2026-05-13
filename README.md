@@ -55,8 +55,44 @@ npm run dev
 - `GET /api/v1/items`
 - `POST /api/v1/items`
 
+## Flujo de generacion por bloques (agent-ready)
+
+- `POST /api/v1/workspaces/{workspace_id}/generated`
+- Crea un run de documento y genera bloques markdown.
+- Si `MATTIN_GENERATION_AGENT_ID` esta configurado, usa el agente de Mattin y espera un JSON de bloques.
+- Si el agente no responde en formato valido, aplica fallback local con plantilla base.
+
+## Chat por bloque con agente
+
+- `POST /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks/{block_id}/agent-chat`
+- Registra mensaje de usuario y respuesta de assistant para el bloque.
+- Si el agente devuelve `updated_markdown`, puede auto-aplicarse al bloque (`auto_apply=true`).
+
+## Agentes para relaciones e impacto
+
+Para habilitar deteccion de relaciones y sugerencias de impacto con `call_agent`, define en `backend/.env`:
+
+- `MATTIN_BLOCK_RELATIONSHIP_AGENT_ID=<agent_id>`
+- `MATTIN_BLOCK_IMPACT_AGENT_ID=<agent_id>`
+
+## Servidor MCP del backend
+
+- Configuracion del cliente mcp: 
+{"tfg-docs-tools": {"transport": "streamable_http", "url": "http://host.docker.internal:8010/mcp/v1/id/1/1"}}
+- `POST /mcp/v1/id/{app_id}/{server_id}`
+- `POST /mcp/v1/{app_slug}/{server_slug}`
+- Methods soportados (JSON-RPC):
+- `initialize`
+- `tools/list`
+- `tools/call`
+- Tools disponibles:
+- `get_document_outline`
+- `rewrite_block`
+- `review_consistency`
+
 ## Notas
 
 - Por defecto el backend espera PostgreSQL en `localhost:5432` con DB `tfg_db`.
 - En esta maquina se configuro `.env` a `POSTGRES_PORT=55432` por conflicto de puertos.
 - La migracion inicial habilita `vector` y crea tabla `item_embeddings`.
+- Si configuras `MCP_SERVER_TOKEN`, el endpoint MCP requiere `Authorization: Bearer <token>` o header `x-mcp-token`.
