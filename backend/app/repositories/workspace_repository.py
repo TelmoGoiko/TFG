@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.block import Block
 from app.models.chat_message import ChatMessage
 from app.models.document import Document
+from app.models.impact_suggestion import ImpactSuggestionRecord
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_file import WorkspaceFile
@@ -220,6 +221,61 @@ class WorkspaceRepository:
 
     def delete_messages_by_block(self, block_id: str) -> int:
         statement = delete(ChatMessage).where(ChatMessage.block_id == block_id)
+        result = self.db.execute(statement)
+        self.db.commit()
+        return result.rowcount or 0
+
+    def list_impact_suggestions(
+        self,
+        run_id: str,
+        source_block_id: str,
+        status: str = "pending",
+    ) -> list[ImpactSuggestionRecord]:
+        statement = (
+            select(ImpactSuggestionRecord)
+            .where(
+                ImpactSuggestionRecord.workspace_run_id == run_id,
+                ImpactSuggestionRecord.source_block_id == source_block_id,
+                ImpactSuggestionRecord.status == status,
+            )
+            .order_by(ImpactSuggestionRecord.created_at.desc())
+        )
+        return list(self.db.scalars(statement))
+
+    def create_impact_suggestions(
+        self,
+        suggestions: list[ImpactSuggestionRecord],
+    ) -> list[ImpactSuggestionRecord]:
+        if not suggestions:
+            return []
+        self.db.add_all(suggestions)
+        self.db.commit()
+        for suggestion in suggestions:
+            self.db.refresh(suggestion)
+        return suggestions
+
+    def get_impact_suggestion(self, suggestion_id: str) -> ImpactSuggestionRecord | None:
+        statement = select(ImpactSuggestionRecord).where(ImpactSuggestionRecord.id == suggestion_id)
+        return self.db.scalar(statement)
+
+    def delete_impact_suggestion(self, suggestion_id: str) -> bool:
+        statement = delete(ImpactSuggestionRecord).where(ImpactSuggestionRecord.id == suggestion_id)
+        result = self.db.execute(statement)
+        self.db.commit()
+        return result.rowcount > 0
+
+    def save_impact_suggestion(self, suggestion: ImpactSuggestionRecord) -> ImpactSuggestionRecord:
+        self.db.add(suggestion)
+        self.db.commit()
+        self.db.refresh(suggestion)
+        return suggestion
+
+    def delete_pending_impact_suggestions(self, run_id: str, source_block_id: str) -> int:
+        statement = delete(ImpactSuggestionRecord).where(
+            ImpactSuggestionRecord.workspace_run_id == run_id,
+            ImpactSuggestionRecord.source_block_id == source_block_id,
+            ImpactSuggestionRecord.status == "pending",
+        )
         result = self.db.execute(statement)
         self.db.commit()
         return result.rowcount or 0

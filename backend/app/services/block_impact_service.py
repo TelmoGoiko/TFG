@@ -1,13 +1,14 @@
+from datetime import UTC, datetime
 import difflib
 import logging
-from typing import Any
 
 from app.core.config import settings
 from app.integrations.mattin_client import MattinClient, MattinClientError
 from app.models.block import Block
+from app.models.impact_suggestion import ImpactSuggestionRecord
 from app.repositories.workspace_repository import WorkspaceRepository
-from app.schemas.workspace import ImpactSuggestion
 from app.utils.json_payload import extract_json_object
+from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,12 @@ class BlockImpactService:
         block_id: str,
         original_content: str,
         new_content: str,
-    ) -> list[ImpactSuggestion]:
+        conversation_id: int | None = None,
+    ) -> list[ImpactSuggestionRecord]:
+        if self.impact_agent_id is None:
+            logger.info("Impact agent not configured (MATTIN_BLOCK_IMPACT_AGENT_ID). Skipping impact checks.")
+            return []
+
         from sqlalchemy import select
         from app.models.block_relationship import BlockRelationship
 
@@ -35,19 +41,25 @@ class BlockImpactService:
         incoming_rels = list(self.repository.db.scalars(stmt))
 
         if not incoming_rels:
+            logger.info("No incoming relationships for block %s. Impact check skipped.", block_id)
+            self.repository.delete_pending_impact_suggestions(run_id, block_id)
             return []
 
         diff = self._compute_diff(original_content, new_content)
         if not diff:
+            logger.info("No diff detected for block %s. Impact check skipped.", block_id)
+            self.repository.delete_pending_impact_suggestions(run_id, block_id)
             return []
 
         all_blocks = self.repository.list_blocks(run_id)
         block_by_id = {b.id: b for b in all_blocks}
         changed_block = block_by_id.get(block_id)
         if changed_block is None:
+            logger.info("Changed block %s not found in run %s. Impact check skipped.", block_id, run_id)
             return []
 
-        suggestions: list[ImpactSuggestion] = []
+        self.repository.delete_pending_impact_suggestions(run_id, block_id)
+        suggestions: list[ImpactSuggestionRecord] = []
 
         for rel in incoming_rels:
             source_block = block_by_id.get(rel.source_block_id)
@@ -63,17 +75,30 @@ class BlockImpactService:
                     relationship_description=rel.description,
                 )
                 if suggestion_text:
-                    suggestions.append(ImpactSuggestion(
+                    if suggestion_text.strip().lower() in {"no update required", "No update required", "none", "n/a", "no changes needed"}:
+                        continue
+                    suggestions.append(ImpactSuggestionRecord(
+                        id=new_id(),
+                        workspace_run_id=run_id,
+                        source_block_id=block_id,
                         affected_block_id=source_block.id,
-                        affected_block_title=source_block.title,
-                        suggestion=suggestion_text,
-                        reason=f"This block {rel.relationship_type} '{changed_block.title}' which has changed.",
                         relationship_type=rel.relationship_type,
+                        reason=f"This block {rel.relationship_type} '{changed_block.title}' which has changed.",
+                        suggestion=suggestion_text,
+                        status="pending",
+                        conversation_id=conversation_id,
+                        created_at=datetime.now(UTC),
                     ))
             except Exception as exc:
                 logger.warning("Failed to generate impact suggestion: %s", exc)
 
-        return suggestions
+        logger.info(
+            "Impact check completed for block %s. relationships=%s suggestions=%s",
+            block_id,
+            len(incoming_rels),
+            len(suggestions),
+        )
+        return self.repository.create_impact_suggestions(suggestions)
 
     def apply_suggestion(
         self,

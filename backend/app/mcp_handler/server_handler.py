@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 _MCP_TOOL_ALIASES: dict[str, str] = {
-    "get_document_outline": "workspace_get_run_outline",
     "review_consistency": "workspace_review_consistency",
     "workspace.list_blocks": "workspace_list_blocks",
     "workspace.get_block": "workspace_get_block",

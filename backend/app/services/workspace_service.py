@@ -561,8 +561,20 @@ class WorkspaceService:
         block.refresh_meta_on_save()
         saved_block = self.repository.save_block(block)
         self.relationship_service.update_block_metadata(block)
+        self._refresh_relationships_for_run(run_id)
 
         return saved_block
+
+    def _refresh_relationships_for_run(self, run_id: str) -> None:
+        blocks = self.repository.list_blocks(run_id)
+        if not blocks:
+            return
+
+        self.relationship_service.detect_relationships_from_generation(
+            run_id=run_id,
+            blocks=blocks,
+        )
+        logger.info("Block relationships refreshed. run_id=%s blocks=%s", run_id, len(blocks))
 
     def _normalize_insert_index(self, blocks: list[Block], desired_index: int | None) -> int:
         if desired_index is None:
@@ -756,16 +768,50 @@ class WorkspaceService:
             result.get("updated_content") if result.get("applied") else result.get("proposed_content")
         )
         if isinstance(candidate_content, str) and candidate_content.strip() and candidate_content != original_content:
+            logger.info(f"Content updated for block {block_id}")
+            if result.get("applied"):
+                self._refresh_relationships_for_run(run_id)
             impact_suggestions = self.impact_service.check_impact(
                 run_id=run_id,
                 block_id=block_id,
                 original_content=original_content,
                 new_content=candidate_content,
+                conversation_id=result.get("conversation_id"),
             )
         else:
             impact_suggestions = []
 
-        result["impact_suggestions"] = impact_suggestions
+        if result.get("applied") and impact_suggestions:
+            for suggestion in impact_suggestions:
+                logger.info(f"Applying impact suggestion to block {suggestion.affected_block_id} due to changes in block {block_id}")
+                updated_block = self.impact_service.apply_suggestion(
+                    run_id=run_id,
+                    block_id=suggestion.affected_block_id,
+                    suggestion=suggestion.suggestion,
+                )
+                if updated_block is not None:
+                    self.repository.delete_impact_suggestion(suggestion.id)
+
+        if impact_suggestions:
+            block_by_id = {b.id: b for b in self.repository.list_blocks(run_id)}
+        else:
+            block_by_id = {}
+
+        result["impact_suggestions"] = [
+            {
+                "id": s.id,
+                "source_block_id": s.source_block_id,
+                "affected_block_id": s.affected_block_id,
+                "affected_block_title": block_by_id.get(s.affected_block_id).title if block_by_id.get(s.affected_block_id) else "",
+                "suggestion": s.suggestion,
+                "reason": s.reason,
+                "relationship_type": s.relationship_type,
+                "status": s.status,
+                "conversation_id": s.conversation_id,
+                "created_at": s.created_at,
+            }
+            for s in impact_suggestions
+        ]
         return result
 
     def get_run_outline(self, workspace_id: str, run_id: str) -> list[dict[str, Any]]:
@@ -975,13 +1021,20 @@ class WorkspaceService:
             new_content=new_content,
         )
 
+        block_by_id = {b.id: b for b in self.repository.list_blocks(run_id)}
+
         return [
             {
+                "id": s.id,
+                "source_block_id": s.source_block_id,
                 "affected_block_id": s.affected_block_id,
-                "affected_block_title": s.affected_block_title,
+                "affected_block_title": block_by_id.get(s.affected_block_id).title if block_by_id.get(s.affected_block_id) else "",
                 "suggestion": s.suggestion,
                 "reason": s.reason,
                 "relationship_type": s.relationship_type,
+                "status": s.status,
+                "conversation_id": s.conversation_id,
+                "created_at": s.created_at,
             }
             for s in suggestions
         ]
@@ -992,6 +1045,7 @@ class WorkspaceService:
         run_id: str,
         block_id: str,
         suggestion: str,
+        suggestion_id: str | None = None,
     ) -> dict[str, Any] | None:
         run = self.repository.get_run(run_id)
         if run is None or run.workspace_id != workspace_id:
@@ -1010,6 +1064,9 @@ class WorkspaceService:
         if updated_block is None:
             return None
 
+        if suggestion_id:
+            self.repository.delete_impact_suggestion(suggestion_id)
+
         return {
             "id": updated_block.id,
             "workspace_run_id": updated_block.workspace_run_id,
@@ -1021,3 +1078,66 @@ class WorkspaceService:
             "content": updated_block.content,
             "meta": updated_block.meta,
         }
+
+    def list_impact_suggestions(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_id: str,
+        status: str = "pending",
+    ) -> list[dict[str, Any]]:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        suggestions = self.repository.list_impact_suggestions(
+            run_id=run_id,
+            source_block_id=block_id,
+            status=status,
+        )
+        block_by_id = {b.id: b for b in self.repository.list_blocks(run_id)}
+
+        return [
+            {
+                "id": s.id,
+                "source_block_id": s.source_block_id,
+                "affected_block_id": s.affected_block_id,
+                "affected_block_title": block_by_id.get(s.affected_block_id).title if block_by_id.get(s.affected_block_id) else "",
+                "suggestion": s.suggestion,
+                "reason": s.reason,
+                "relationship_type": s.relationship_type,
+                "status": s.status,
+                "conversation_id": s.conversation_id,
+                "created_at": s.created_at,
+            }
+            for s in suggestions
+        ]
+
+    def dismiss_impact_suggestion(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_id: str,
+        suggestion_id: str,
+    ) -> bool:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        block = self.repository.get_block(run_id, block_id)
+        if block is None:
+            raise ValueError("Block not found")
+
+        suggestion = self.repository.get_impact_suggestion(suggestion_id)
+        if suggestion is None:
+            raise ValueError("Impact suggestion not found")
+
+        if suggestion.workspace_run_id != run_id or suggestion.source_block_id != block_id:
+            raise ValueError("Impact suggestion does not belong to this block")
+
+        self.repository.delete_impact_suggestion(suggestion_id)
+        return True

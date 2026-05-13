@@ -172,6 +172,7 @@ def apply_impact_suggestion(
             run_id=run_id,
             block_id=block_id,
             suggestion=payload.suggestion,
+            suggestion_id=payload.suggestion_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -180,3 +181,51 @@ def apply_impact_suggestion(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to apply suggestion")
 
     return BlockResponse.model_validate(result)
+
+
+@router.get(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/impact-suggestions",
+    response_model=list[ImpactSuggestion],
+)
+def list_impact_suggestions(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    db: Session = Depends(get_db),
+) -> list[ImpactSuggestion]:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        suggestions = service.list_impact_suggestions(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    return [ImpactSuggestion.model_validate(s) for s in suggestions]
+
+
+@router.post(
+    "/{workspace_id}/generated/{run_id}/blocks/{block_id}/impact-suggestions/{suggestion_id}/dismiss",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def dismiss_impact_suggestion(
+    workspace_id: str,
+    run_id: str,
+    block_id: str,
+    suggestion_id: str,
+    db: Session = Depends(get_db),
+) -> None:
+    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
+
+    try:
+        service.dismiss_impact_suggestion(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+            suggestion_id=suggestion_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
