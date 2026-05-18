@@ -94,7 +94,11 @@ class MattinClient:
         payload = self._request_json(
             "POST",
             f"/app/{self.app_id}/repositories/",
-            json_body={"name": name},
+            json_body={
+                "name": name,
+                "embedding_service_id": 1,
+                "vector_db_type": "pgvector",
+            },
         )
         if isinstance(payload, dict):
             return payload

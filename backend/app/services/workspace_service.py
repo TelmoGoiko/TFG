@@ -183,21 +183,49 @@ class WorkspaceService:
             )
             self.repository.create_user(owner)
 
+        # Create Mattin repository first — if it fails, nothing is persisted locally
+        try:
+            created_repository = self.mattin_client.create_repository(name.strip())
+        except MattinClientError as exc:
+            raise ValueError(f"Could not create Mattin repository for workspace: {exc}") from exc
+
+        repository_id = self._extract_mattin_identifier(created_repository)
+        if repository_id is None:
+            logger.warning(
+                "Mattin repository creation payload without id. keys=%s payload=%s",
+                sorted(created_repository.keys()),
+                created_repository,
+            )
+            raise ValueError("Mattin repository creation did not return a repository id")
+
         model = Workspace(
             id=new_id(),
             owner_id=owner_id,
             name=name.strip(),
             description=description.strip(),
-            mattin_repository_id=None,
+            mattin_repository_id=repository_id,
             created_at=datetime.now(UTC),
         )
-        created_workspace = self.repository.create_workspace(model)
-        return self._ensure_workspace_mattin_repository(created_workspace)
+        return self.repository.create_workspace(model)
 
     def get_workspace(self, workspace_id: str) -> Workspace | None:
         return self.repository.get_workspace(workspace_id)
 
     def delete_workspace(self, workspace_id: str) -> bool:
+        workspace = self.repository.get_workspace(workspace_id)
+        if workspace is None:
+            return False
+
+        if workspace.mattin_repository_id:
+            try:
+                self.mattin_client.delete_repository(workspace.mattin_repository_id)
+            except MattinClientError as exc:
+                logger.warning(
+                    "Could not delete Mattin repository %s: %s",
+                    workspace.mattin_repository_id,
+                    exc,
+                )
+
         return self.repository.delete_workspace(workspace_id)
 
     def list_documents(self, workspace_id: str) -> list[Document]:
@@ -461,10 +489,9 @@ class WorkspaceService:
         )
 
         logger.info(
-            "Creating run. run_id=%s workspace_id=%s reference_docs=%s reference_files=%s",
+            "Creating run. run_id=%s workspace_id=%s reference_files=%s",
             workspace_run.id,
             workspace_id,
-            len(reference_document_ids),
             len(reference_file_ids),
         )
 

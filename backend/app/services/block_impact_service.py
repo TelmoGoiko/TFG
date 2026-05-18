@@ -75,7 +75,7 @@ class BlockImpactService:
                     relationship_description=rel.description,
                 )
                 if suggestion_text:
-                    if suggestion_text.strip().lower() in {"no update required", "No update required", "none", "n/a", "no changes needed"}:
+                    if suggestion_text.strip().lower() in {"no update required", "No update required", "No update needed", "no update needed", "none", "n/a", "no changes needed"}:
                         continue
                     suggestions.append(ImpactSuggestionRecord(
                         id=new_id(),
