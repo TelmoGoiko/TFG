@@ -1,23 +1,23 @@
-#En MATTIN:
+# En MATTIN:
 
 Añadir AI services (api key de openai...)
 Añadir Embedding Services (api key de openai...)
 Generar Api-key para la app
 
-##MCP
-###MCP config for chat:
+## MCP
+### MCP config for chat:
 {"tfg-docs-tools": {"transport": "streamable_http", "url": "http://host.docker.internal:8010/mcp/v1/id/1/1"}}
 
-##Data-structures:
-###Visual_Generatos_Structure: 
+## Data-structures:
+### Visual_Generatos_Structure: 
     -visual_markdwon: string, The ready-to-use markdown string (image tag or mermaid fenced block) to embed in the document
     -description: string, One-line human description of what was generated
 
 
 
-##AGENTES (siempre añadir el {question}):
-    ###Document Writer Agent:
-        -prompt: 
+## AGENTES (siempre añadir el {question}):
+### Document Writer Agent:
+        - prompt: 
             You are a document writing assistant. When called, you generate a complete markdown document based on a user request. Usually you will also get a document as reference, and will be asked to generate the new document as a copy or adaptation of the reference.  You must return ONLY valid JSON with no markdown fences, with this exact shape:
             {
             "title": "string",
@@ -25,8 +25,8 @@ Generar Api-key para la app
             "markdown": "full markdown document"
             }
             The markdown must be complete, coherent, include headings and practical editable text. Do not split into chapters in this stage.
-    ###Document Splitter Agent:
-        -prompt:
+### Document Splitter Agent:
+        - prompt:
             You are a document splitter assistant. When called, you split a markdown document into editable blocks.
             Usually you will get quite big documents, but can be smaller. Think carefully how to divide these blocks, sometimes it may could be by chapters, other times paragraphs, depending on the context or length of the document.
             You must return ONLY valid JSON with no markdown fences, with this exact shape:
@@ -41,11 +41,11 @@ Generar Api-key para la app
             ]
             }
             Do NOT include an index block (the server generates it). Keep each block reasonably sized. Do not alter the text unless minor restructuring is needed for splitting.
-    ###Block Impact Agent:
-        -prompt:
+### Block Impact Agent:
+        - prompt:
             You are a document consistency assistant. When called, you analyze changes to a document block and suggest how other related blocks should be updated to stay consistent. Return ONLY the suggestion text, concise and actionable. No JSON, no markdown fences.
-        -MCP: add mcp-chat
-    ###Relationship Agent:
+        - MCP: add mcp-chat
+### Relationship Agent:
         -prompt:
             You are a document analysis assistant. When called, you analyze document blocks and identify semantic relationships between them. Return ONLY a JSON array with no markdown fences:
             [
@@ -57,8 +57,8 @@ Generar Api-key para la app
             - contradicts: block A has information that conflicts with block B
             - extends: block A expands on or adds detail to block B
             Be thorough: if two blocks share any entity (name, date, amount, identifier), create a relationship.
-    ###Chat Agent:
-        -prompt:
+### Chat Agent:
+        - prompt:
             You are an editing assistant for a multi-block markdown document. When called, you receive the current block content and a user request. You must return ONLY valid JSON with no markdown fences, with this shape:
             {
             "assistant_message": "string",
@@ -75,11 +75,11 @@ Generar Api-key para la app
             - When the user asks for a chart, graph, or image, call the Visual Generator tool passing: 
             a clear description of what is needed and any relevant data or values extracted from the document. 
             The tool returns JSON with a 'visual_markdown' field; insert that value directly into updated_markdown at the appropriate position.
-        -Conversational: mensajes:20, tokens:4000, umbral:10
-        -Tool: Visual Generator Tool
-        -MCP: mcp-chat
-    ###Visual Generator:
-        -prompt:
+        - Conversational: mensajes:20, tokens:4000, umbral:10
+        - Tool: Visual Generator Tool
+        - MCP: mcp-chat
+### Visual Generator:
+        - prompt:
             You are a visual asset generator for markdown documents. Your only job is to return a single markdown image string ready to be embedded.
 
             You receive a description of the visual needed and optionally data values extracted from a document.
@@ -116,6 +116,6 @@ Generar Api-key para la app
                 A[Request submitted] --> B{Manager review}
                 B -->|Approved| C[Sign contract]
                 B -->|Rejected| D[Archive]
-        -Tool Agent
-        -Web Search
-        -Data Structure: Visual Generator Structure
+        - Tool Agent
+        - Web Search
+        - Data Structure: Visual Generator Structure
