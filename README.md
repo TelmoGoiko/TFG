@@ -13,6 +13,9 @@ Monorepo base para TFG con:
 - `docker-compose.yml`: PostgreSQL + pgvector
 - `.vscode/launch.json`: debug de FastAPI
 
+## 0) Configuraciones en Mattin
+El proyecto depende de Mattin AI, así que una vez arrancado (https://github.com/lksnext-ai-lab/ai-core-tools/), leer Configs_Mattin.md para configurar lo necesario.
+
 ## 1) Levantar base de datos
 
 ```bash
