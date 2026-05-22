@@ -134,7 +134,6 @@ class ChatMessageResponse(BaseModel):
 class BlockAgentChatRequest(BaseModel):
     user_message: str = Field(min_length=1)
     selected_snippet: str | None = None
-    auto_apply: bool = True
     conversation_id: int | None = None
     chat_agent_id: int | None = None
 

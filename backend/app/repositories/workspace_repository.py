@@ -205,6 +205,15 @@ class WorkspaceRepository:
         self.db.commit()
         return result.rowcount > 0
 
+    def get_blocks_by_ids(self, run_id: str, block_ids: list[str]) -> list[Block]:
+        if not block_ids:
+            return []
+        statement = select(Block).where(
+            Block.workspace_run_id == run_id,
+            Block.id.in_(block_ids),
+        ).order_by(Block.order_index.asc())
+        return list(self.db.scalars(statement))
+
     def list_messages(self, block_id: str) -> list[ChatMessage]:
         statement = (
             select(ChatMessage)

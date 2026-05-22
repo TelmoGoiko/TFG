@@ -766,7 +766,6 @@ class WorkspaceService:
         user_message: str,
         *,
         selected_snippet: str | None = None,
-        auto_apply: bool = True,
         conversation_id: int | None = None,
         chat_agent_id: int | None = None,
     ) -> dict[str, Any]:
@@ -786,18 +785,18 @@ class WorkspaceService:
             block_id=block_id,
             user_message=user_message,
             selected_snippet=selected_snippet,
-            auto_apply=auto_apply,
             conversation_id=conversation_id,
             chat_agent_id=chat_agent_id,
         )
+
+        if result.get("blocks_modified"):
+            self._refresh_relationships_for_run(run_id)
 
         candidate_content = (
             result.get("updated_content") if result.get("applied") else result.get("proposed_content")
         )
         if isinstance(candidate_content, str) and candidate_content.strip() and candidate_content != original_content:
             logger.info(f"Content updated for block {block_id}")
-            if result.get("applied"):
-                self._refresh_relationships_for_run(run_id)
             impact_suggestions = self.impact_service.check_impact(
                 run_id=run_id,
                 block_id=block_id,
@@ -855,6 +854,30 @@ class WorkspaceService:
                 "file_name": block.file_name,
             }
             for block in self.repository.list_blocks(run_id)
+        ]
+
+    def get_blocks_content(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        blocks = self.repository.get_blocks_by_ids(run_id, block_ids)
+        return [
+            {
+                "block_id": b.id,
+                "order_index": b.order_index,
+                "title": b.title,
+                "summary": b.summary,
+                "block_type": b.block_type,
+                "file_name": b.file_name,
+                "content": b.content,
+            }
+            for b in blocks
         ]
 
     def review_run_consistency(self, workspace_id: str, run_id: str) -> dict[str, Any]:

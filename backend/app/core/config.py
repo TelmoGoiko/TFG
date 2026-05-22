@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     mattin_block_chat_agent_id: int | None = None
     mattin_block_impact_agent_id: int | None = None
     mattin_block_relationship_agent_id: int | None = None
+    mattin_block_rewrite_agent_id: int | None = None
+    mattin_document_wide_agent_id: int | None = None
     mattin_generation_timeout_seconds: int = 180
     mattin_generation_max_retries: int = 1
     mcp_server_name: str = "tfg-docs-tools"
@@ -26,6 +28,8 @@ class Settings(BaseSettings):
         "mattin_block_chat_agent_id",
         "mattin_block_impact_agent_id",
         "mattin_block_relationship_agent_id",
+        "mattin_block_rewrite_agent_id",
+        "mattin_document_wide_agent_id",
         mode="before",
     )
     @classmethod

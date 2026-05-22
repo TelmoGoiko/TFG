@@ -69,7 +69,6 @@ npm run dev
 
 - `POST /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks/{block_id}/agent-chat`
 - Registra mensaje de usuario y respuesta de assistant para el bloque.
-- Si el agente devuelve `updated_markdown`, puede auto-aplicarse al bloque (`auto_apply=true`).
 
 ## Agentes para relaciones e impacto
 
