@@ -9,7 +9,6 @@ import zipfile
 from app.integrations.mattin_client import MattinClient, MattinClientError
 from app.models.block import Block
 from app.models.chat_message import ChatMessage
-from app.models.document import Document
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_file import WorkspaceFile
@@ -228,25 +227,6 @@ class WorkspaceService:
 
         return self.repository.delete_workspace(workspace_id)
 
-    def list_documents(self, workspace_id: str) -> list[Document]:
-        return self.repository.list_documents(workspace_id)
-
-    def create_document(self, workspace_id: str, title: str, content: str) -> Document:
-        if not title.strip():
-            raise ValueError("Document title is required")
-
-        model = Document(
-            id=new_id(),
-            workspace_id=workspace_id,
-            title=title.strip(),
-            content=content,
-            created_at=datetime.now(UTC),
-        )
-        return self.repository.create_document(model)
-
-    def delete_document(self, document_id: str) -> bool:
-        return self.repository.delete_document(document_id)
-
     def list_files(self, workspace_id: str) -> list[WorkspaceFile]:
         self._sync_workspace_files_from_mattin(workspace_id=workspace_id)
         return self.repository.list_files(workspace_id)
@@ -450,16 +430,11 @@ class WorkspaceService:
             return None
 
         workspace_files = self.repository.list_files(workspace_id)
-        documents = self.repository.list_documents(workspace_id)
 
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
             for workspace_file in workspace_files:
                 zip_file.writestr(workspace_file.file_name, workspace_file.content_bytes)
-
-            for document in documents:
-                doc_name = f"generated-documents/{document.title}.md"
-                zip_file.writestr(doc_name, document.content)
 
         archive_name = f"{workspace.name.replace(' ', '_') or 'workspace'}_bundle.zip"
         return archive_name, zip_buffer.getvalue()
@@ -468,17 +443,13 @@ class WorkspaceService:
         self,
         workspace_id: str,
         prompt: str,
-        reference_document_ids: list[str],
         reference_file_ids: list[str],
     ) -> WorkspaceRun:
         if not prompt.strip():
             raise ValueError("Prompt is required")
 
-        references = self.repository.get_documents_by_ids(workspace_id, reference_document_ids)
         reference_files = self.repository.get_files_by_ids(workspace_id, reference_file_ids)
-        reference_titles = [doc.title for doc in references] + [
-            file.file_name for file in reference_files
-        ]
+        reference_titles = [file.file_name for file in reference_files]
 
         workspace_run = WorkspaceRun(
             id=new_id(),
