@@ -61,29 +61,37 @@ class BlockImpactService:
         self.repository.delete_pending_impact_suggestions(run_id, block_id)
         suggestions: list[ImpactSuggestionRecord] = []
 
+        # Group relationships by affected block to avoid duplicate suggestions
+        rels_by_block: dict[str, list] = {}
         for rel in incoming_rels:
             source_block = block_by_id.get(rel.source_block_id)
             if source_block is None:
                 continue
+            rels_by_block.setdefault(rel.source_block_id, []).append(rel)
+
+        for affected_block_id, rels in rels_by_block.items():
+            source_block = block_by_id[affected_block_id]
+            combined_type = ", ".join(sorted({r.relationship_type for r in rels}))
+            combined_description = "; ".join(r.description for r in rels if r.description)
 
             try:
                 suggestion_text = self._generate_suggestion_with_ai(
                     changed_block=changed_block,
                     affected_block=source_block,
                     diff=diff,
-                    relationship_type=rel.relationship_type,
-                    relationship_description=rel.description,
+                    relationship_type=combined_type,
+                    relationship_description=combined_description,
                 )
                 if suggestion_text:
-                    if suggestion_text.strip().lower() in {"no update required", "No update required", "No update needed", "no update needed", "none", "n/a", "no changes needed"}:
+                    if suggestion_text.strip().lower() in {"no update required", "No update required"}:
                         continue
                     suggestions.append(ImpactSuggestionRecord(
                         id=new_id(),
                         workspace_run_id=run_id,
                         source_block_id=block_id,
                         affected_block_id=source_block.id,
-                        relationship_type=rel.relationship_type,
-                        reason=f"This block {rel.relationship_type} '{changed_block.title}' which has changed.",
+                        relationship_type=combined_type,
+                        reason=f"This block {combined_type} '{changed_block.title}' which has changed.",
                         suggestion=suggestion_text,
                         status="pending",
                         conversation_id=conversation_id,
@@ -165,6 +173,7 @@ class BlockImpactService:
             f"Affected block current content:\n{affected_block.content[:1000]}\n\n"
             f"Based on the changes, provide a specific suggestion for how the affected block should be updated. "
             f"Be concise and actionable. Return ONLY the suggestion text."
+            f"If no update is needed, respond with 'No update required'."
         )
 
         if self.impact_agent_id is None:

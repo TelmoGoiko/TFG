@@ -8,8 +8,6 @@ from sqlalchemy.orm import Session
 from app.db.dependencies import get_db
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.workspace import (
-    DocumentCreate,
-    DocumentResponse,
     BlockResponse,
     BlockUpdateRequest,
     BlockCreateRequest,
@@ -72,46 +70,6 @@ def delete_workspace(workspace_id: str, db: Session = Depends(get_db)) -> None:
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
-
-
-@router.get("/{workspace_id}/documents", response_model=list[DocumentResponse])
-def list_documents(workspace_id: str, db: Session = Depends(get_db)) -> list[DocumentResponse]:
-    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
-    documents = service.list_documents(workspace_id)
-    return [DocumentResponse.model_validate(document, from_attributes=True) for document in documents]
-
-
-@router.post(
-    "/{workspace_id}/documents",
-    response_model=DocumentResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_document(
-    workspace_id: str,
-    payload: DocumentCreate,
-    db: Session = Depends(get_db),
-) -> DocumentResponse:
-    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
-
-    try:
-        document = service.create_document(
-            workspace_id=workspace_id,
-            title=payload.title,
-            content=payload.content,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-
-    return DocumentResponse.model_validate(document, from_attributes=True)
-
-
-@router.delete("/{workspace_id}/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_document(workspace_id: str, document_id: str, db: Session = Depends(get_db)) -> None:
-    service = WorkspaceService(WorkspaceRepository(db), MattinClient())
-    deleted = service.delete_document(document_id)
-
-    if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
 
 @router.get("/{workspace_id}/files", response_model=list[WorkspaceFileResponse])
@@ -217,7 +175,6 @@ def create_generated_run(
         run = service.create_run(
             workspace_id=workspace_id,
             prompt=payload.prompt,
-            reference_document_ids=payload.reference_document_ids,
             reference_file_ids=payload.reference_file_ids,
         )
     except ValueError as exc:
@@ -306,7 +263,7 @@ def update_block(
     if run is None or run.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
-    block = service.update_block_content(run_id, block_id, payload.content)
+    block = service.update_block_content(workspace_id, run_id, block_id, payload.content)
 
     if block is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")

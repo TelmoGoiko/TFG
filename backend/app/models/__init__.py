@@ -1,7 +1,6 @@
 from app.models.block import Block
 from app.models.block_relationship import BlockRelationship
 from app.models.chat_message import ChatMessage
-from app.models.document import Document
 from app.models.impact_suggestion import ImpactSuggestionRecord
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -12,7 +11,6 @@ __all__ = [
 	"Block",
 	"BlockRelationship",
 	"ChatMessage",
-	"Document",
 	"ImpactSuggestionRecord",
 	"User",
 	"Workspace",

@@ -13,6 +13,9 @@ Monorepo base para TFG con:
 - `docker-compose.yml`: PostgreSQL + pgvector
 - `.vscode/launch.json`: debug de FastAPI
 
+## 0) Configuraciones en Mattin
+El proyecto depende de Mattin AI, así que una vez arrancado (https://github.com/lksnext-ai-lab/ai-core-tools/), leer Configs_Mattin.md para configurar lo necesario.
+
 ## 1) Levantar base de datos
 
 ```bash
@@ -66,7 +69,6 @@ npm run dev
 
 - `POST /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks/{block_id}/agent-chat`
 - Registra mensaje de usuario y respuesta de assistant para el bloque.
-- Si el agente devuelve `updated_markdown`, puede auto-aplicarse al bloque (`auto_apply=true`).
 
 ## Agentes para relaciones e impacto
 

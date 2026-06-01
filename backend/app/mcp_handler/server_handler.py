@@ -18,7 +18,6 @@ _MCP_TOOL_ALIASES: dict[str, str] = {
     "review_consistency": "workspace_review_consistency",
     "workspace.list_blocks": "workspace_list_blocks",
     "workspace.get_block": "workspace_get_block",
-    "workspace.propose_block_rewrite": "workspace_propose_block_rewrite",
     "workspace.review_consistency": "workspace_review_consistency",
     "workspace.create_block": "workspace_create_block",
     "workspace.delete_block": "workspace_delete_block",
@@ -47,25 +46,6 @@ _MCP_TOOLS: dict[str, dict[str, Any]] = {
                 "workspace_id": {"type": "string"},
                 "run_id": {"type": "string"},
                 "block_id": {"type": "string"},
-            },
-        },
-    },
-    "workspace_propose_block_rewrite": {
-        "name": "workspace_propose_block_rewrite",
-        "description": "Propose or apply a block rewrite. If updated_markdown is provided, apply directly; otherwise ask the block chat agent for a proposal.",
-        "inputSchema": {
-            "type": "object",
-            "required": ["workspace_id", "run_id", "block_id"],
-            "properties": {
-                "workspace_id": {"type": "string"},
-                "run_id": {"type": "string"},
-                "block_id": {"type": "string"},
-                "instructions": {"type": "string"},
-                "updated_markdown": {"type": "string"},
-                "assistant_message": {"type": "string"},
-                "selected_snippet": {"type": "string"},
-                "conversation_id": {"type": "integer"},
-                "chat_agent_id": {"type": "integer"},
             },
         },
     },
@@ -114,28 +94,37 @@ _MCP_TOOLS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "workspace_get_block_relationships": {
+        "name": "workspace_get_block_relationships",
+        "description": "Get semantic relationships (references, depends_on, contradicts, extends) for a specific block. Use this to discover which other blocks are related before deciding which ones to update.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["workspace_id", "run_id", "block_id"],
+            "properties": {
+                "workspace_id": {"type": "string"},
+                "run_id": {"type": "string"},
+                "block_id": {"type": "string"},
+            },
+        },
+    },
+    "workspace_get_blocks_content": {
+        "name": "workspace_get_blocks_content",
+        "description": "Batch-fetch the full markdown content of multiple blocks by their IDs. Use this after workspace_get_block_relationships to read the actual content of related blocks.",
+        "inputSchema": {
+            "type": "object",
+            "required": ["workspace_id", "run_id", "block_ids"],
+            "properties": {
+                "workspace_id": {"type": "string"},
+                "run_id": {"type": "string"},
+                "block_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of block IDs to fetch.",
+                },
+            },
+        },
+    },
 }
-
-_ALLOWED_TOOLS_BY_ROLE: dict[str, set[str]] = {
-    "writer": {
-        "workspace_list_blocks",
-        "workspace_get_block",
-    },
-    "splitter": {
-        "workspace_list_blocks",
-        "workspace_get_block",
-    },
-    "chat": {
-        "workspace_list_blocks",
-        "workspace_get_block",
-        "workspace_propose_block_rewrite",
-        "workspace_review_consistency",
-        "workspace_create_block",
-        "workspace_delete_block",
-    },
-}
-
-
 
 def _build_service(db: Session) -> WorkspaceService:
     return WorkspaceService(WorkspaceRepository(db), MattinClient())
@@ -180,44 +169,11 @@ def _authorize_mcp(request: Request) -> None:
         )
 
 
-def _normalize_role(value: str | None) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip().lower()
-    if normalized in _ALLOWED_TOOLS_BY_ROLE:
-        return normalized
-    return None
 
-
-def _resolve_role_from_request(request: Request) -> str | None:
-    role = _normalize_role(request.headers.get("x-mcp-agent-role"))
-    if role is not None:
-        return role
-
-    agent_id_header = request.headers.get("x-mcp-agent-id")
-    if agent_id_header and agent_id_header.isdigit():
-        agent_id = int(agent_id_header)
-        if settings.mattin_document_writer_agent_id is not None and agent_id == settings.mattin_document_writer_agent_id:
-            return "writer"
-        if settings.mattin_document_splitter_agent_id is not None and agent_id == settings.mattin_document_splitter_agent_id:
-            return "splitter"
-        if settings.mattin_block_chat_agent_id is not None and agent_id == settings.mattin_block_chat_agent_id:
-            return "chat"
-
-    return None
-
-
-def _is_tool_allowed(tool_name: str, role: str | None) -> bool:
-    if role is None:
-        return True
-    return tool_name in _ALLOWED_TOOLS_BY_ROLE.get(role, set())
-
-
-def _tool_descriptors(role: str | None) -> list[dict[str, Any]]:
+def _tool_descriptors() -> list[dict[str, Any]]:
     tools = []
-    for name, descriptor in _MCP_TOOLS.items():
-        if _is_tool_allowed(name, role):
-            tools.append(descriptor)
+    for descriptor in _MCP_TOOLS.values():
+        tools.append(descriptor)
     return tools
 
 
@@ -273,68 +229,6 @@ def _call_tool(
             },
         }
 
-    if resolved_tool_name == "workspace_propose_block_rewrite":
-        workspace_id = _require_string(arguments, "workspace_id")
-        run_id = _require_string(arguments, "run_id")
-        block_id = _require_string(arguments, "block_id")
-
-        updated_markdown = arguments.get("updated_markdown")
-        if isinstance(updated_markdown, str) and updated_markdown.strip():
-            run = service.get_run(run_id)
-            if run is None or run.workspace_id != workspace_id:
-                raise ValueError("Generated run not found")
-
-            block = service.get_block(run_id=run_id, block_id=block_id)
-            if block is None:
-                raise ValueError("Block not found")
-
-            updated_block = service.update_block_content(
-                run_id=run_id,
-                block_id=block_id,
-                content=updated_markdown.strip(),
-            )
-            if updated_block is None:
-                raise ValueError("Block not found")
-
-            assistant_message = arguments.get("assistant_message")
-            if not isinstance(assistant_message, str) or not assistant_message.strip():
-                assistant_message = "Block updated."
-
-            return {
-                "workspace_id": workspace_id,
-                "run_id": run_id,
-                "block_id": block_id,
-                "assistant_message": assistant_message,
-                "applied": True,
-                "proposed_content": None,
-                "updated_content": updated_block.content,
-            }
-
-        instructions = _require_string(arguments, "instructions")
-
-        conversation_id = arguments.get("conversation_id")
-        if not isinstance(conversation_id, int):
-            conversation_id = None
-
-        chat_agent_id = arguments.get("chat_agent_id")
-        if not isinstance(chat_agent_id, int):
-            chat_agent_id = None
-
-        selected_snippet = arguments.get("selected_snippet")
-        if not isinstance(selected_snippet, str):
-            selected_snippet = None
-
-        return service.chat_with_block_agent(
-            workspace_id=workspace_id,
-            run_id=run_id,
-            block_id=block_id,
-            user_message=instructions,
-            selected_snippet=selected_snippet,
-            auto_apply=False,
-            conversation_id=conversation_id,
-            chat_agent_id=chat_agent_id,
-        )
-
     if resolved_tool_name == "workspace_review_consistency":
         workspace_id = _require_string(arguments, "workspace_id")
         run_id = _require_string(arguments, "run_id")
@@ -352,6 +246,8 @@ def _call_tool(
         content = arguments.get("content")
         if not isinstance(content, str):
             content = ""
+            
+        content = service.persist_chart_images_in_markdown(workspace_id, content)
 
         block_type = arguments.get("block_type")
         if not isinstance(block_type, str):
@@ -421,6 +317,55 @@ def _call_tool(
             "deleted": True,
         }
 
+    if resolved_tool_name == "workspace_get_block_relationships":
+        workspace_id = _require_string(arguments, "workspace_id")
+        run_id = _require_string(arguments, "run_id")
+        block_id = _require_string(arguments, "block_id")
+
+        relationships = service.get_block_relationships(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_id=block_id,
+        )
+        serialized = [
+            {
+                "id": r["id"],
+                "source_block_id": r["source_block_id"],
+                "target_block_id": r["target_block_id"],
+                "relationship_type": r["relationship_type"],
+                "description": r["description"],
+                "direction": r["direction"],
+                "other_block": r["other_block"],
+            }
+            for r in relationships
+        ]
+        return {
+            "workspace_id": workspace_id,
+            "run_id": run_id,
+            "block_id": block_id,
+            "relationships": serialized,
+        }
+
+    if resolved_tool_name == "workspace_get_blocks_content":
+        workspace_id = _require_string(arguments, "workspace_id")
+        run_id = _require_string(arguments, "run_id")
+        block_ids = arguments.get("block_ids")
+        if not isinstance(block_ids, list) or not block_ids:
+            raise ValueError("Missing required argument 'block_ids'")
+        if not all(isinstance(bid, str) and bid.strip() for bid in block_ids):
+            raise ValueError("'block_ids' must be a non-empty list of strings")
+
+        blocks = service.get_blocks_content(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            block_ids=block_ids,
+        )
+        return {
+            "workspace_id": workspace_id,
+            "run_id": run_id,
+            "blocks": blocks,
+        }
+
     raise ValueError(f"Unknown tool '{resolved_tool_name}'")
 
 
@@ -459,17 +404,13 @@ def _handle_jsonrpc(
     if method in {"notifications/initialized", "ping"}:
         return _jsonrpc_success(request_id, {})
 
-    role = _resolve_role_from_request(request)
 
     if method == "tools/list":
-        logger.info("MCP tools/list requested. role=%s", role)
+        logger.info("MCP tools/list requested.")
         return _jsonrpc_success(
             request_id,
             {
-                "tools": _tool_descriptors(role),
-                "_meta": {
-                    "resolved_role": role,
-                },
+                "tools": _tool_descriptors()
             },
         )
 
@@ -483,15 +424,9 @@ def _handle_jsonrpc(
             return _jsonrpc_error(request_id, -32602, "Invalid tool arguments")
 
         resolved_tool_name = _MCP_TOOL_ALIASES.get(tool_name, tool_name)
-        if not _is_tool_allowed(resolved_tool_name, role):
-            return _jsonrpc_error(
-                request_id,
-                -32001,
-                f"Tool '{resolved_tool_name}' is not allowed for role '{role}'",
-            )
 
         try:
-            logger.info("MCP tools/call requested. tool=%s role=%s", resolved_tool_name, role)
+            logger.info("MCP tools/call requested. tool=%s", resolved_tool_name)
             tool_result = _call_tool(service=service, tool_name=tool_name, arguments=arguments)
         except ValueError as exc:
             return _jsonrpc_error(request_id, -32000, str(exc))

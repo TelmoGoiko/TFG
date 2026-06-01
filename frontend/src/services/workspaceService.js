@@ -198,7 +198,6 @@ const chatWithBlockAgent = async ({
       method: 'POST',
       body: JSON.stringify({
         user_message: userMessage,
-        auto_apply: false,
         conversation_id: conversationId ?? null,
       }),
     },

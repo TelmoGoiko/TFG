@@ -117,7 +117,6 @@ def chat_with_block_agent(
             block_id=block_id,
             user_message=payload.user_message,
             selected_snippet=payload.selected_snippet,
-            auto_apply=payload.auto_apply,
             conversation_id=payload.conversation_id,
             chat_agent_id=payload.chat_agent_id,
         )
