@@ -470,6 +470,13 @@ class WorkspaceService:
         reference_files = self.repository.get_files_by_ids(workspace_id, reference_file_ids)
         reference_titles = [file.file_name for file in reference_files]
 
+        image_files = [file for file in reference_files if file.mime_type.startswith("image/")]
+        file_uploads = [
+            ("files", (file.file_name, file.content_bytes, file.mime_type))
+            for file in image_files
+            if file.content_bytes
+        ]
+
         workspace_run = WorkspaceRun(
             id=new_id(),
             workspace_id=workspace_id,
@@ -488,13 +495,14 @@ class WorkspaceService:
         mattin_reference_file_ids = [
             file.mattin_file_id
             for file in reference_files
-            if isinstance(file.mattin_file_id, int)
+            if not file.mime_type.startswith("image/") and isinstance(file.mattin_file_id, int)
         ]
 
         generated_blocks = self.generation_agent_service.generate_blocks(
             prompt=prompt,
             reference_titles=reference_titles,
             reference_file_ids=mattin_reference_file_ids,
+            file_uploads=file_uploads or None,
         )
 
         if generated_blocks is None:

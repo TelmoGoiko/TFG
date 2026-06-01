@@ -14,6 +14,8 @@ from app.utils.markdown_blocks import create_file_name
 
 logger = logging.getLogger(__name__)
 
+MattinFileUpload = tuple[str, tuple[str, bytes, str]]
+
 
 class WorkspaceGenerationAgentService:
     def __init__(self, mattin_client: MattinClient) -> None:
@@ -24,11 +26,13 @@ class WorkspaceGenerationAgentService:
         prompt: str,
         reference_titles: list[str],
         reference_file_ids: list[int],
+        file_uploads: list[MattinFileUpload] | None = None,
     ) -> list[dict[str, Any]] | None:
         full_document = self._generate_full_document_with_agent(
             prompt=prompt,
             reference_titles=reference_titles,
             reference_file_ids=reference_file_ids,
+            file_uploads=file_uploads,
         )
 
         if full_document is None:
@@ -58,6 +62,7 @@ class WorkspaceGenerationAgentService:
         agent_id: int,
         message: str,
         file_references: list[int],
+        file_uploads: list[MattinFileUpload] | None = None,
         timeout_seconds: int,
     ) -> dict[str, Any]:
         try:
@@ -65,6 +70,7 @@ class WorkspaceGenerationAgentService:
                 agent_id=agent_id,
                 message=message,
                 file_references=file_references or None,
+                files=file_uploads or None,
                 timeout=timeout_seconds,
             )
         except MattinClientError as exc:
@@ -82,6 +88,7 @@ class WorkspaceGenerationAgentService:
                 agent_id=agent_id,
                 message=message,
                 file_references=None,
+                files=file_uploads or None,
                 timeout=timeout_seconds,
             )
 
@@ -473,6 +480,7 @@ class WorkspaceGenerationAgentService:
         prompt: str,
         reference_titles: list[str],
         reference_file_ids: list[int],
+        file_uploads: list[MattinFileUpload] | None,
     ) -> dict[str, str] | None:
         agent_id = self._resolve_writer_agent_id()
         if agent_id is None:
@@ -502,6 +510,7 @@ class WorkspaceGenerationAgentService:
                     agent_id=agent_id,
                     message=message,
                     file_references=file_references,
+                    file_uploads=file_uploads,
                     timeout_seconds=attempt_timeout,
                 )
                 break
