@@ -4,11 +4,16 @@ import concurrent.futures
 from datetime import UTC, datetime
 import json
 import logging
+import re
+from urllib.parse import parse_qs, unquote, urlparse
 from typing import Any
+
+import requests as _http
 
 from app.core.config import settings
 from app.integrations.mattin_client import MattinClient, MattinClientError
 from app.models.chat_message import ChatMessage
+from app.models.workspace_file import WorkspaceFile
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.utils.ids import new_id
 from app.utils.json_payload import extract_json_object
@@ -144,10 +149,17 @@ class WorkspaceBlockChatAgentService:
         instruction: str,
         outline_text: str,
     ) -> None:
+        run = self.repository.get_run(run_id)
+        if run is None:
+            logger.warning("_rewrite_single_block: run not found. run_id=%s", run_id)
+            return
         block = self.repository.get_block(run_id, block_id)
         if block is None:
             logger.warning("_rewrite_single_block: block not found. block_id=%s", block_id)
             return
+        # Force a fresh read from DB — the block may have been modified by MCP calls
+        # (separate sessions) after it was last loaded into the current session.
+        self.repository.db.refresh(block)
         rewrite_agent_id = settings.mattin_block_rewrite_agent_id
         if rewrite_agent_id is None:
             logger.warning("_rewrite_single_block: MATTIN_BLOCK_REWRITE_AGENT_ID not set, skipping. block_id=%s", block_id)
@@ -171,7 +183,10 @@ class WorkspaceBlockChatAgentService:
             if isinstance(payload, dict):
                 new_markdown = payload.get("updated_markdown")
                 if new_markdown and str(new_markdown).strip():
-                    block.content = str(new_markdown).strip()
+                    block.content = self.persist_chart_images_in_markdown(
+                        run.workspace_id,
+                        str(new_markdown).strip(),
+                    )
                     self.repository.save_block(block)
                     logger.info("_rewrite_single_block: applied. block_id=%s", block_id)
         except MattinClientError as exc:
@@ -209,6 +224,128 @@ class WorkspaceBlockChatAgentService:
             return ""
 
         return "Related blocks context:\n" + "\n".join(related)
+        
+    def persist_chart_images_in_markdown(self, workspace_id: str, markdown: str) -> str:
+        """Download chart images, store them in the local DB, and replace external URLs with the local download URL."""
+        _IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\((https?://[^)\s]+)(?:\s+"[^"]*")?\)')
+
+        def _replace(match: re.Match) -> str:  # type: ignore[type-arg]
+            alt_text = match.group(1)
+            chart_url = match.group(2)
+            parsed = urlparse(chart_url)
+            host = parsed.hostname or ""
+            if not (
+                host.endswith("quickchart.io")
+                or host.endswith("mermaid.ink")
+                or host.endswith("mermaid.live")
+            ):
+                return match.group(0)
+            if settings.backend_base_url and chart_url.startswith(settings.backend_base_url):
+                return match.group(0)
+
+            logger.info(
+                "persist_chart_images_in_markdown: chart detected. workspace_id=%s url=%s",
+                workspace_id, chart_url,
+            )
+
+            try:
+                resp = _http.get(chart_url, timeout=15)
+            except Exception as exc:
+                logger.warning(
+                    "persist_chart_images_in_markdown: download failed. url=%s error=%s",
+                    chart_url, exc,
+                )
+                return match.group(0)
+
+            image_bytes: bytes | None = None
+            mime_type: str | None = None
+            if resp.ok:
+                image_bytes = resp.content
+                mime_type = resp.headers.get("Content-Type", "image/png").split(";")[0].strip()
+            else:
+                fallback = self._fetch_quickchart_via_post(chart_url)
+                if fallback is None:
+                    logger.warning(
+                        "persist_chart_images_in_markdown: download failed. url=%s status=%s",
+                        chart_url, resp.status_code,
+                    )
+                    return match.group(0)
+                image_bytes, mime_type = fallback
+
+            if image_bytes is None or mime_type is None:
+                return match.group(0)
+            if not (mime_type.startswith("image/") or mime_type == "image/svg+xml"):
+                logger.warning(
+                    "persist_chart_images_in_markdown: non-image response. url=%s content_type=%s",
+                    chart_url, mime_type,
+                )
+                return match.group(0)
+            ext = {"image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg"}.get(mime_type, "png")
+            file_name = f"chart_{new_id()}.{ext}"
+
+            model = WorkspaceFile(
+                id=new_id(),
+                workspace_id=workspace_id,
+                file_name=file_name,
+                mime_type=mime_type,
+                size_bytes=len(image_bytes),
+                mattin_file_id=None,
+                content_bytes=image_bytes,
+                created_at=datetime.now(UTC),
+            )
+            self.repository.create_file(model)
+
+            download_url = (
+                f"{settings.backend_base_url}/api/v1/workspaces/{workspace_id}/files/{model.id}/download"
+            )
+            logger.info(
+                "persist_chart_images_in_markdown: chart saved locally. workspace_id=%s file_id=%s url=%s",
+                workspace_id, model.id, download_url,
+            )
+            return f"![{alt_text}]({download_url})"
+
+        return _IMAGE_PATTERN.sub(_replace, markdown)
+
+    def _fetch_quickchart_via_post(self, chart_url: str) -> tuple[bytes, str] | None:
+        parsed = urlparse(chart_url)
+        host = parsed.hostname or ""
+        if not host.endswith("quickchart.io"):
+            return None
+
+        query = parse_qs(parsed.query)
+        raw_config = query.get("c", [None])[0]
+        if not raw_config:
+            return None
+
+        try:
+            decoded = unquote(raw_config)
+            config_json = json.loads(decoded)
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                "persist_chart_images_in_markdown: invalid quickchart config. url=%s error=%s",
+                chart_url, exc,
+            )
+            return None
+
+        params: dict[str, str] = {}
+        for key in ("w", "h", "format", "bkg"):
+            value = query.get(key, [None])[0]
+            if isinstance(value, str) and value.strip():
+                params[key] = value
+
+        post_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        try:
+            resp = _http.post(post_url, params=params, json=config_json, timeout=20)
+            resp.raise_for_status()
+        except Exception as exc:
+            logger.warning(
+                "persist_chart_images_in_markdown: quickchart POST failed. url=%s error=%s",
+                chart_url, exc,
+            )
+            return None
+
+        mime_type = resp.headers.get("Content-Type", "image/png").split(";")[0].strip()
+        return resp.content, mime_type
 
     def _detect_scope(self, user_message: str) -> str:
         """Returns 'document' for document-wide requests, 'default' otherwise."""
@@ -295,6 +432,10 @@ class WorkspaceBlockChatAgentService:
 
     def _apply_bulk_rewrites(self, run_id: str, rewrites: list[dict[str, Any]]) -> int:
         count = 0
+        run = self.repository.get_run(run_id)
+        if run is None:
+            logger.warning("_apply_bulk_rewrites: run not found. run_id=%s", run_id)
+            return count
         for item in rewrites:
             block_id = item.get("block_id")
             new_markdown = item.get("updated_markdown")
@@ -304,7 +445,10 @@ class WorkspaceBlockChatAgentService:
             if block is None:
                 logger.warning("_apply_bulk_rewrites: block not found. block_id=%s", block_id)
                 continue
-            block.content = str(new_markdown).strip()
+            block.content = self.persist_chart_images_in_markdown(
+                run.workspace_id,
+                str(new_markdown).strip(),
+            )
             self.repository.save_block(block)
             count += 1
         return count
@@ -453,9 +597,14 @@ class WorkspaceBlockChatAgentService:
                         response.get("response")
                     )
                     if candidate_markdown and candidate_markdown.strip():
-                        proposed_content = candidate_markdown.strip()
+                        proposed_content = self.persist_chart_images_in_markdown(
+                            workspace_id, candidate_markdown.strip()
+                        )
 
                     if cross_block_rewrites:
+                        # Expire the session identity map so that blocks modified by MCP
+                        # calls (which use separate DB sessions) are re-fetched fresh.
+                        self.repository.db.expire_all()
                         all_blocks = self.repository.list_blocks(run_id)
                         outline_text = "\n".join(
                             f"- [{b.order_index + 1}] {b.title} (block_id: {b.id}): {b.summary}"

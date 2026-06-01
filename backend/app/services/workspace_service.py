@@ -6,6 +6,7 @@ import re
 from typing import Any
 import zipfile
 
+from app.core.config import settings
 from app.integrations.mattin_client import MattinClient, MattinClientError
 from app.models.block import Block
 from app.models.chat_message import ChatMessage
@@ -322,11 +323,9 @@ class WorkspaceService:
                 self.repository.save_file(local_file)
                 changed += 1
 
-        # Remove stale local entries so the workspace file list mirrors Mattin.
+        # Remove stale Mattin-backed entries so the workspace file list mirrors Mattin.
         for local_file in self.repository.list_files(workspace_id):
             if not isinstance(local_file.mattin_file_id, int):
-                self.repository.delete_file(local_file.id)
-                changed += 1
                 continue
             if local_file.mattin_file_id not in remote_file_ids:
                 self.repository.delete_file(local_file.id)
@@ -383,7 +382,7 @@ class WorkspaceService:
             mime_type=resolved_mime_type,
             size_bytes=len(content_bytes),
             mattin_file_id=mattin_file_id,
-            content_bytes=content_bytes,
+            content_bytes=b"",
             created_at=datetime.now(UTC),
         )
         logger.info(
@@ -393,6 +392,9 @@ class WorkspaceService:
             mattin_file_id,
         )
         return self.repository.create_file(model)
+
+    def persist_chart_images_in_markdown(self, workspace_id: str, markdown: str) -> str:
+        return self.block_chat_agent_service.persist_chart_images_in_markdown(workspace_id, markdown)
 
     def delete_file(self, workspace_id: str, file_id: str) -> bool:
         workspace_file = self.repository.get_file(workspace_id, file_id)
@@ -434,7 +436,24 @@ class WorkspaceService:
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
             for workspace_file in workspace_files:
-                zip_file.writestr(workspace_file.file_name, workspace_file.content_bytes)
+                file_bytes = workspace_file.content_bytes
+                if (
+                    not file_bytes
+                    and isinstance(workspace_file.mattin_file_id, int)
+                    and workspace.mattin_repository_id
+                ):
+                    try:
+                        file_bytes, _content_type = self.mattin_client.fetch_resource_view(
+                            repository_id=workspace.mattin_repository_id,
+                            resource_id=workspace_file.mattin_file_id,
+                        )
+                    except MattinClientError as exc:
+                        logger.warning(
+                            "build_workspace_zip: Mattin fetch failed. file_id=%s error=%s",
+                            workspace_file.id, exc,
+                        )
+                        file_bytes = workspace_file.content_bytes
+                zip_file.writestr(workspace_file.file_name, file_bytes)
 
         archive_name = f"{workspace.name.replace(' ', '_') or 'workspace'}_bundle.zip"
         return archive_name, zip_buffer.getvalue()
@@ -496,19 +515,22 @@ class WorkspaceService:
             len(generated_blocks),
         )
 
-        block_models = [
-            Block(
-                id=data["id"],
-                workspace_run_id=workspace_run.id,
-                order_index=data["order_index"],
-                title=data["title"],
-                block_type=data["block_type"],
-                summary=data["summary"],
-                file_name=data["file_name"],
-                content=data["content"],
+        block_models = []
+        for data in generated_blocks:
+            raw_content = str(data.get("content") or "")
+            content = self.persist_chart_images_in_markdown(workspace_id, raw_content)
+            block_models.append(
+                Block(
+                    id=data["id"],
+                    workspace_run_id=workspace_run.id,
+                    order_index=data["order_index"],
+                    title=data["title"],
+                    block_type=data["block_type"],
+                    summary=data["summary"],
+                    file_name=data["file_name"],
+                    content=content,
+                )
             )
-            for data in generated_blocks
-        ]
 
         created_run = self.repository.create_run_with_blocks(workspace_run, block_models)
         persisted_blocks = self.repository.list_blocks(created_run.id)
@@ -550,12 +572,12 @@ class WorkspaceService:
     def get_block(self, run_id: str, block_id: str) -> Block | None:
         return self.repository.get_block(run_id, block_id)
 
-    def update_block_content(self, run_id: str, block_id: str, content: str) -> Block | None:
+    def update_block_content(self, workspace_id: str, run_id: str, block_id: str, content: str) -> Block | None:
         block = self.repository.get_block(run_id, block_id)
         if block is None:
             return None
 
-        block.content = content
+        block.content = self.persist_chart_images_in_markdown(workspace_id, content)
         block.refresh_meta_on_save()
         saved_block = self.repository.save_block(block)
         self.relationship_service.update_block_metadata(block)
@@ -653,6 +675,7 @@ class WorkspaceService:
         resolved_title = title.strip() or "Untitled block"
         resolved_summary = summary.strip()
         resolved_content = content or ""
+        resolved_content = self.persist_chart_images_in_markdown(workspace_id, resolved_content)
         resolved_block_type = block_type.strip() or "chapter"
         resolved_file_name = (file_name or "").strip()
         if not resolved_file_name:

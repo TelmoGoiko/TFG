@@ -246,6 +246,8 @@ def _call_tool(
         content = arguments.get("content")
         if not isinstance(content, str):
             content = ""
+            
+        content = service.persist_chart_images_in_markdown(workspace_id, content)
 
         block_type = arguments.get("block_type")
         if not isinstance(block_type, str):

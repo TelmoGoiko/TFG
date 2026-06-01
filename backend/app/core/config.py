@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     mattin_generation_max_retries: int = 1
     mcp_server_name: str = "tfg-docs-tools"
     mcp_server_token: str | None = None
+    backend_base_url: str = "http://localhost:8010"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator(

@@ -263,7 +263,7 @@ def update_block(
     if run is None or run.workspace_id != workspace_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Generated run not found")
 
-    block = service.update_block_content(run_id, block_id, payload.content)
+    block = service.update_block_content(workspace_id, run_id, block_id, payload.content)
 
     if block is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Block not found")
