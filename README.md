@@ -34,6 +34,23 @@ Para ejecutar solo setup (DB + migraciones, sin lanzar servers):
 powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1 -SkipServers
 ```
 
+## Docker dev (todo en un compose)
+
+```bash
+docker compose up --build
+```
+
+- Backend: http://localhost:8010
+- Frontend: http://localhost:5173
+
+Si no tienes `backend/.env`, copia `backend/.env.example`.
+
+Para aplicar migraciones manualmente:
+
+```bash
+docker compose exec backend python -m alembic upgrade head
+```
+
 ## 2) Backend
 
 ```bash
