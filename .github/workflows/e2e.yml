@@ -167,7 +167,8 @@ jobs:
           exit 1
 
       - name: Install frontend dependencies
-        run: npm --prefix frontend install
+        working-directory: frontend
+        run: npm ci
 
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install --with-deps
