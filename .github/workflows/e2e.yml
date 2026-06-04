@@ -12,6 +12,17 @@ jobs:
   e2e:
     runs-on: self-hosted
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
+    env:
+      MATTIN_API_URL: ${{ secrets.MATTIN_API_URL }}
+      MATTIN_API_KEY: ${{ secrets.MATTIN_API_KEY }}
+      MATTIN_APP_ID: ${{ secrets.MATTIN_APP_ID }}
+      MATTIN_BLOCK_CHAT_AGENT_ID: ${{ secrets.MATTIN_BLOCK_CHAT_AGENT_ID }}
+      MATTIN_BLOCK_IMPACT_AGENT_ID: ${{ secrets.MATTIN_BLOCK_IMPACT_AGENT_ID }}
+      MATTIN_BLOCK_RELATIONSHIP_AGENT_ID: ${{ secrets.MATTIN_BLOCK_RELATIONSHIP_AGENT_ID }}
+      MATTIN_DOCUMENT_WRITER_AGENT_ID: ${{ secrets.MATTIN_DOCUMENT_WRITER_AGENT_ID }}
+      MATTIN_DOCUMENT_SPLITTER_AGENT_ID: ${{ secrets.MATTIN_DOCUMENT_SPLITTER_AGENT_ID }}
+      MATTIN_BLOCK_REWRITE_AGENT_ID: ${{ secrets.MATTIN_BLOCK_REWRITE_AGENT_ID }}
+      MATTIN_DOCUMENT_WIDE_AGENT_ID: ${{ secrets.MATTIN_DOCUMENT_WIDE_AGENT_ID }}
 
     steps:
       - name: Checkout
@@ -22,28 +33,59 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Validate Mattin secrets
+      - name: Validate Mattin secrets (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          if [ -z "${{ secrets.MATTIN_API_URL }}" ] || [ -z "${{ secrets.MATTIN_API_KEY }}" ] || [ -z "${{ secrets.MATTIN_APP_ID }}" ]; then
+          if (-not $env:MATTIN_API_URL -or -not $env:MATTIN_API_KEY -or -not $env:MATTIN_APP_ID) {
+            Write-Error "Missing required secrets: MATTIN_API_URL, MATTIN_API_KEY, MATTIN_APP_ID"
+            exit 1
+          }
+
+      - name: Validate Mattin secrets (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ -z "${MATTIN_API_URL}" ] || [ -z "${MATTIN_API_KEY}" ] || [ -z "${MATTIN_APP_ID}" ]; then
             echo "Missing required secrets: MATTIN_API_URL, MATTIN_API_KEY, MATTIN_APP_ID"
             exit 1
           fi
 
-      - name: Write backend env
+      - name: Write backend env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item backend/.env.example backend/.env -Force
+          @"
+          MATTIN_API_URL=$env:MATTIN_API_URL
+          MATTIN_API_KEY=$env:MATTIN_API_KEY
+          MATTIN_APP_ID=$env:MATTIN_APP_ID
+          MATTIN_BLOCK_CHAT_AGENT_ID=$env:MATTIN_BLOCK_CHAT_AGENT_ID
+          MATTIN_BLOCK_IMPACT_AGENT_ID=$env:MATTIN_BLOCK_IMPACT_AGENT_ID
+          MATTIN_BLOCK_RELATIONSHIP_AGENT_ID=$env:MATTIN_BLOCK_RELATIONSHIP_AGENT_ID
+          MATTIN_DOCUMENT_WRITER_AGENT_ID=$env:MATTIN_DOCUMENT_WRITER_AGENT_ID
+          MATTIN_DOCUMENT_SPLITTER_AGENT_ID=$env:MATTIN_DOCUMENT_SPLITTER_AGENT_ID
+          MATTIN_BLOCK_REWRITE_AGENT_ID=$env:MATTIN_BLOCK_REWRITE_AGENT_ID
+          MATTIN_DOCUMENT_WIDE_AGENT_ID=$env:MATTIN_DOCUMENT_WIDE_AGENT_ID
+          "@ | Add-Content -Path backend/.env
+
+      - name: Write backend env (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           cp backend/.env.example backend/.env
-          {
-            echo "MATTIN_API_URL=${{ secrets.MATTIN_API_URL }}"
-            echo "MATTIN_API_KEY=${{ secrets.MATTIN_API_KEY }}"
-            echo "MATTIN_APP_ID=${{ secrets.MATTIN_APP_ID }}"
-            echo "MATTIN_BLOCK_CHAT_AGENT_ID=${{ secrets.MATTIN_BLOCK_CHAT_AGENT_ID }}"
-            echo "MATTIN_BLOCK_IMPACT_AGENT_ID=${{ secrets.MATTIN_BLOCK_IMPACT_AGENT_ID }}"
-            echo "MATTIN_BLOCK_RELATIONSHIP_AGENT_ID=${{ secrets.MATTIN_BLOCK_RELATIONSHIP_AGENT_ID }}"
-            echo "MATTIN_DOCUMENT_WRITER_AGENT_ID=${{ secrets.MATTIN_DOCUMENT_WRITER_AGENT_ID }}"
-            echo "MATTIN_DOCUMENT_SPLITTER_AGENT_ID=${{ secrets.MATTIN_DOCUMENT_SPLITTER_AGENT_ID }}"
-            echo "MATTIN_BLOCK_REWRITE_AGENT_ID=${{ secrets.MATTIN_BLOCK_REWRITE_AGENT_ID }}"
-            echo "MATTIN_DOCUMENT_WIDE_AGENT_ID=${{ secrets.MATTIN_DOCUMENT_WIDE_AGENT_ID }}"
-          } >> backend/.env
+          cat <<EOF >> backend/.env
+          MATTIN_API_URL=${MATTIN_API_URL}
+          MATTIN_API_KEY=${MATTIN_API_KEY}
+          MATTIN_APP_ID=${MATTIN_APP_ID}
+          MATTIN_BLOCK_CHAT_AGENT_ID=${MATTIN_BLOCK_CHAT_AGENT_ID}
+          MATTIN_BLOCK_IMPACT_AGENT_ID=${MATTIN_BLOCK_IMPACT_AGENT_ID}
+          MATTIN_BLOCK_RELATIONSHIP_AGENT_ID=${MATTIN_BLOCK_RELATIONSHIP_AGENT_ID}
+          MATTIN_DOCUMENT_WRITER_AGENT_ID=${MATTIN_DOCUMENT_WRITER_AGENT_ID}
+          MATTIN_DOCUMENT_SPLITTER_AGENT_ID=${MATTIN_DOCUMENT_SPLITTER_AGENT_ID}
+          MATTIN_BLOCK_REWRITE_AGENT_ID=${MATTIN_BLOCK_REWRITE_AGENT_ID}
+          MATTIN_DOCUMENT_WIDE_AGENT_ID=${MATTIN_DOCUMENT_WIDE_AGENT_ID}
+          EOF
 
       - name: Start stack
         run: docker compose up -d --build db backend
@@ -57,25 +99,71 @@ jobs:
       - name: Start frontend
         run: docker compose up -d frontend
 
-      - name: Wait for backend
+      - name: Wait for backend (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          for i in {1..60}; do
-            if curl -fsS http://localhost:8010/health > /dev/null; then
+          $backendUrl = "http://localhost:8010/health"
+          $ready = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            try {
+              Invoke-WebRequest -Uri $backendUrl -UseBasicParsing -TimeoutSec 5 | Out-Null
+              $ready = $true
               break
-            fi
-            sleep 5
-          done
-          curl -fsS http://localhost:8010/health
+            } catch {
+              Start-Sleep -Seconds 5
+            }
+          }
+          if (-not $ready) {
+            throw "Backend not ready at $backendUrl"
+          }
 
-      - name: Wait for frontend
+      - name: Wait for backend (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
+          backend_url="http://localhost:8010/health"
           for i in {1..60}; do
-            if curl -fsS http://localhost:5173 > /dev/null; then
-              break
+            if curl -fsS "$backend_url" > /dev/null; then
+              exit 0
             fi
             sleep 5
           done
-          curl -fsS http://localhost:5173 > /dev/null
+          echo "Backend not ready at $backend_url"
+          exit 1
+
+      - name: Wait for frontend (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $frontendUrl = "http://localhost:5173"
+          $ready = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            try {
+              Invoke-WebRequest -Uri $frontendUrl -UseBasicParsing -TimeoutSec 5 | Out-Null
+              $ready = $true
+              break
+            } catch {
+              Start-Sleep -Seconds 5
+            }
+          }
+          if (-not $ready) {
+            throw "Frontend not ready at $frontendUrl"
+          }
+
+      - name: Wait for frontend (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          frontend_url="http://localhost:5173"
+          for i in {1..60}; do
+            if curl -fsS "$frontend_url" > /dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Frontend not ready at $frontend_url"
+          exit 1
 
       - name: Install frontend dependencies
         run: npm --prefix frontend install
