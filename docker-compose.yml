@@ -17,5 +17,46 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tfg_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://tfg_user:tfg_password@db:5432/tfg_db
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./backend:/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tfg_frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8010/api/v1}
+      VITE_AUTH_USER_STORAGE_KEY: ${VITE_AUTH_USER_STORAGE_KEY:-tfg_auth_user}
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+
 volumes:
   postgres_data:
+  frontend_node_modules:

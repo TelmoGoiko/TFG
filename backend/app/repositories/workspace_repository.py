@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 
 from app.models.block import Block
 from app.models.chat_message import ChatMessage
-from app.models.document import Document
 from app.models.impact_suggestion import ImpactSuggestionRecord
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -59,26 +58,6 @@ class WorkspaceRepository:
         self.db.commit()
         return result.rowcount > 0
 
-    def list_documents(self, workspace_id: str) -> list[Document]:
-        statement = (
-            select(Document)
-            .where(Document.workspace_id == workspace_id)
-            .order_by(Document.created_at.desc())
-        )
-        return list(self.db.scalars(statement))
-
-    def create_document(self, document: Document) -> Document:
-        self.db.add(document)
-        self.db.commit()
-        self.db.refresh(document)
-        return document
-
-    def delete_document(self, document_id: str) -> bool:
-        statement = delete(Document).where(Document.id == document_id)
-        result = self.db.execute(statement)
-        self.db.commit()
-        return result.rowcount > 0
-
     def list_files(self, workspace_id: str) -> list[WorkspaceFile]:
         statement = (
             select(WorkspaceFile)
@@ -122,16 +101,6 @@ class WorkspaceRepository:
         result = self.db.execute(statement)
         self.db.commit()
         return result.rowcount > 0
-
-    def get_documents_by_ids(self, workspace_id: str, document_ids: list[str]) -> list[Document]:
-        if not document_ids:
-            return []
-
-        statement = select(Document).where(
-            Document.workspace_id == workspace_id,
-            Document.id.in_(document_ids),
-        )
-        return list(self.db.scalars(statement))
 
     def get_files_by_ids(self, workspace_id: str, file_ids: list[str]) -> list[WorkspaceFile]:
         if not file_ids:
@@ -204,6 +173,15 @@ class WorkspaceRepository:
         result = self.db.execute(statement)
         self.db.commit()
         return result.rowcount > 0
+
+    def get_blocks_by_ids(self, run_id: str, block_ids: list[str]) -> list[Block]:
+        if not block_ids:
+            return []
+        statement = select(Block).where(
+            Block.workspace_run_id == run_id,
+            Block.id.in_(block_ids),
+        ).order_by(Block.order_index.asc())
+        return list(self.db.scalars(statement))
 
     def list_messages(self, block_id: str) -> list[ChatMessage]:
         statement = (

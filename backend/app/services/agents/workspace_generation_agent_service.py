@@ -14,6 +14,8 @@ from app.utils.markdown_blocks import create_file_name
 
 logger = logging.getLogger(__name__)
 
+MattinFileUpload = tuple[str, tuple[str, bytes, str]]
+
 
 class WorkspaceGenerationAgentService:
     def __init__(self, mattin_client: MattinClient) -> None:
@@ -24,25 +26,21 @@ class WorkspaceGenerationAgentService:
         prompt: str,
         reference_titles: list[str],
         reference_file_ids: list[int],
+        file_uploads: list[MattinFileUpload] | None = None,
     ) -> list[dict[str, Any]] | None:
         full_document = self._generate_full_document_with_agent(
             prompt=prompt,
             reference_titles=reference_titles,
             reference_file_ids=reference_file_ids,
+            file_uploads=file_uploads,
         )
 
-        if full_document is not None:
-            blocks = self._split_document_into_blocks(
-                document_title=full_document.get("title", "Generated document"),
-                markdown=full_document.get("markdown", ""),
-                reference_file_ids=reference_file_ids,
-            )
-            if blocks is not None:
-                return blocks
+        if full_document is None:
+            return None
 
-        return self._generate_blocks_with_agent(
-            prompt=prompt,
-            reference_titles=reference_titles,
+        return self._split_document_into_blocks(
+            document_title=full_document.get("title", "Generated document"),
+            markdown=full_document.get("markdown", ""),
             reference_file_ids=reference_file_ids,
         )
 
@@ -64,6 +62,7 @@ class WorkspaceGenerationAgentService:
         agent_id: int,
         message: str,
         file_references: list[int],
+        file_uploads: list[MattinFileUpload] | None = None,
         timeout_seconds: int,
     ) -> dict[str, Any]:
         try:
@@ -71,6 +70,7 @@ class WorkspaceGenerationAgentService:
                 agent_id=agent_id,
                 message=message,
                 file_references=file_references or None,
+                files=file_uploads or None,
                 timeout=timeout_seconds,
             )
         except MattinClientError as exc:
@@ -88,6 +88,7 @@ class WorkspaceGenerationAgentService:
                 agent_id=agent_id,
                 message=message,
                 file_references=None,
+                files=file_uploads or None,
                 timeout=timeout_seconds,
             )
 
@@ -99,7 +100,8 @@ class WorkspaceGenerationAgentService:
         )
 
         return (
-            "You generate one complete technical markdown document. "
+            "You generate one complete markdown document. "
+            "Usually you will also get a document as reference, and will be asked to generate the new document as a copy or adaptation of the reference."
             "Return ONLY valid JSON with this exact shape:\n"
             "{\n"
             '  "title": "string",\n'
@@ -115,35 +117,6 @@ class WorkspaceGenerationAgentService:
             f"Known references:\n{references_section}"
         )
 
-    def _build_blocks_generation_message(self, prompt: str, reference_titles: list[str]) -> str:
-        references_section = (
-            "\n".join(f"- {title}" for title in reference_titles)
-            if reference_titles
-            else "- No references available"
-        )
-
-        return (
-            "You generate a technical document split into markdown blocks. "
-            "Return ONLY valid JSON with this exact shape:\n"
-            "{\n"
-            '  "blocks": [\n'
-            "    {\n"
-            '      "title": "string",\n'
-            '      "block_type": "index|chapter|closing",\n'
-            '      "summary": "string",\n'
-            '      "markdown": "full markdown content"\n'
-            "    }\n"
-            "  ]\n"
-            "}\n\n"
-            "Rules:\n"
-            "- Include all the blocks that are relevant to the user request, decide whether to divide them as chapters or by paragraphs depending on the content.\n"
-            "- Do NOT include an index block; the server will generate it.\n"
-            "- Keep markdown practical and directly editable.\n"
-            "- Do not wrap JSON in markdown fences.\n\n"
-            f"User request:\n{prompt.strip()}\n\n"
-            f"Known references:\n{references_section}"
-        )
-
     def _build_split_message(
         self,
         document_title: str,
@@ -152,6 +125,8 @@ class WorkspaceGenerationAgentService:
     ) -> str:
         return (
             "You split one markdown document into editable blocks. "
+            "Usually you will get quite big documents, but can be smaller. "
+            "Think carefully how to divide these blocks, sometimes it may could be by chapters, other times paragraphs, depending on the context or length of the document."
             "Return ONLY valid JSON with this exact shape:\n"
             "{\n"
             '  "blocks": [\n'
@@ -477,11 +452,11 @@ class WorkspaceGenerationAgentService:
             return None
 
         normalized_blocks: list[dict[str, Any]] = []
-        for order_index, item in enumerate(blocks_raw):
+        for index, item in enumerate(blocks_raw):
             if not isinstance(item, dict):
                 continue
 
-            title = str(item.get("title", "")).strip() or f"Block {order_index + 1}"
+            title = str(item.get("title", "")).strip() or f"Block {index + 1}"
             block_type = str(item.get("block_type", "chapter")).strip() or "chapter"
             summary = str(item.get("summary", "")).strip()
 
@@ -491,12 +466,9 @@ class WorkspaceGenerationAgentService:
 
             normalized_blocks.append(
                 {
-                    "id": new_id(),
-                    "order_index": order_index,
                     "title": title,
                     "block_type": block_type,
                     "summary": summary,
-                    "file_name": create_file_name(order_index, title),
                     "content": str(markdown_content),
                 }
             )
@@ -508,6 +480,7 @@ class WorkspaceGenerationAgentService:
         prompt: str,
         reference_titles: list[str],
         reference_file_ids: list[int],
+        file_uploads: list[MattinFileUpload] | None,
     ) -> dict[str, str] | None:
         agent_id = self._resolve_writer_agent_id()
         if agent_id is None:
@@ -537,6 +510,7 @@ class WorkspaceGenerationAgentService:
                     agent_id=agent_id,
                     message=message,
                     file_references=file_references,
+                    file_uploads=file_uploads,
                     timeout_seconds=attempt_timeout,
                 )
                 break
@@ -619,72 +593,4 @@ class WorkspaceGenerationAgentService:
             logger.info("Local splitter generated blocks. blocks_count=%s", len(local_blocks))
         return local_blocks
 
-    def _generate_blocks_with_agent(
-        self,
-        prompt: str,
-        reference_titles: list[str],
-        reference_file_ids: list[int],
-    ) -> list[dict[str, Any]] | None:
-        agent_id = self._resolve_writer_agent_id()
-        if agent_id is None:
-            return None
 
-        timeout_seconds = max(5, settings.mattin_generation_timeout_seconds)
-        max_retries = max(0, settings.mattin_generation_max_retries)
-        total_attempts = max_retries + 1
-
-        message = self._build_blocks_generation_message(prompt=prompt, reference_titles=reference_titles)
-        file_references = list(dict.fromkeys(reference_file_ids))
-        logger.info(
-            "Generation run started. agent_id=%s prompt_len=%s references=%s timeout_s=%s retries=%s file_refs=%s",
-            agent_id,
-            len(prompt.strip()),
-            reference_titles,
-            timeout_seconds,
-            max_retries,
-            len(file_references),
-        )
-
-        response: dict[str, Any] | None = None
-        for attempt in range(1, total_attempts + 1):
-            attempt_timeout = timeout_seconds * attempt
-            try:
-                response = self._call_agent_with_reference_fallback(
-                    agent_id=agent_id,
-                    message=message,
-                    file_references=file_references,
-                    timeout_seconds=attempt_timeout,
-                )
-                break
-            except MattinClientError as exc:
-                logger.warning(
-                    "Generation agent call failed. agent_id=%s attempt=%s/%s timeout_s=%s error=%s",
-                    agent_id,
-                    attempt,
-                    total_attempts,
-                    attempt_timeout,
-                    exc,
-                )
-                if attempt == total_attempts:
-                    return None
-
-        if response is None:
-            return None
-
-        parsed_payload = self._coerce_generation_payload(response.get("response"))
-
-        if parsed_payload is None:
-            logger.warning(
-                "Generation agent response could not be parsed into blocks payload. response_keys=%s",
-                sorted(response.keys()),
-            )
-            return None
-
-        blocks = parsed_payload.get("blocks")
-        logger.info(
-            "Generation payload parsed. blocks_count=%s first_title=%s",
-            len(blocks) if isinstance(blocks, list) else 0,
-            blocks[0].get("title") if isinstance(blocks, list) and blocks and isinstance(blocks[0], dict) else None,
-        )
-
-        return self._normalize_agent_generated_blocks(parsed_payload)

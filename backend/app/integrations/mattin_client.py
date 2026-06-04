@@ -94,7 +94,11 @@ class MattinClient:
         payload = self._request_json(
             "POST",
             f"/app/{self.app_id}/repositories/",
-            json_body={"name": name},
+            json_body={
+                "name": name,
+                "embedding_service_id": 1,
+                "vector_db_type": "pgvector",
+            },
         )
         if isinstance(payload, dict):
             return payload
@@ -240,6 +244,7 @@ class MattinClient:
         *,
         conversation_id: int | None = None,
         file_references: list[int] | None = None,
+        files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
         search_params: dict[str, Any] | None = None,
         timeout: int = 45,
     ) -> dict[str, Any]:
@@ -255,6 +260,7 @@ class MattinClient:
             "POST",
             f"/app/{self.app_id}/chat/{agent_id}/call",
             data=data,
+            files=files or None,
             timeout=timeout,
         )
 

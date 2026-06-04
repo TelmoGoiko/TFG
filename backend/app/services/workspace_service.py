@@ -6,10 +6,10 @@ import re
 from typing import Any
 import zipfile
 
+from app.core.config import settings
 from app.integrations.mattin_client import MattinClient, MattinClientError
 from app.models.block import Block
 from app.models.chat_message import ChatMessage
-from app.models.document import Document
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_file import WorkspaceFile
@@ -183,41 +183,50 @@ class WorkspaceService:
             )
             self.repository.create_user(owner)
 
+        # Create Mattin repository first — if it fails, nothing is persisted locally
+        try:
+            created_repository = self.mattin_client.create_repository(name.strip())
+        except MattinClientError as exc:
+            raise ValueError(f"Could not create Mattin repository for workspace: {exc}") from exc
+
+        repository_id = self._extract_mattin_identifier(created_repository)
+        if repository_id is None:
+            logger.warning(
+                "Mattin repository creation payload without id. keys=%s payload=%s",
+                sorted(created_repository.keys()),
+                created_repository,
+            )
+            raise ValueError("Mattin repository creation did not return a repository id")
+
         model = Workspace(
             id=new_id(),
             owner_id=owner_id,
             name=name.strip(),
             description=description.strip(),
-            mattin_repository_id=None,
+            mattin_repository_id=repository_id,
             created_at=datetime.now(UTC),
         )
-        created_workspace = self.repository.create_workspace(model)
-        return self._ensure_workspace_mattin_repository(created_workspace)
+        return self.repository.create_workspace(model)
 
     def get_workspace(self, workspace_id: str) -> Workspace | None:
         return self.repository.get_workspace(workspace_id)
 
     def delete_workspace(self, workspace_id: str) -> bool:
+        workspace = self.repository.get_workspace(workspace_id)
+        if workspace is None:
+            return False
+
+        if workspace.mattin_repository_id:
+            try:
+                self.mattin_client.delete_repository(workspace.mattin_repository_id)
+            except MattinClientError as exc:
+                logger.warning(
+                    "Could not delete Mattin repository %s: %s",
+                    workspace.mattin_repository_id,
+                    exc,
+                )
+
         return self.repository.delete_workspace(workspace_id)
-
-    def list_documents(self, workspace_id: str) -> list[Document]:
-        return self.repository.list_documents(workspace_id)
-
-    def create_document(self, workspace_id: str, title: str, content: str) -> Document:
-        if not title.strip():
-            raise ValueError("Document title is required")
-
-        model = Document(
-            id=new_id(),
-            workspace_id=workspace_id,
-            title=title.strip(),
-            content=content,
-            created_at=datetime.now(UTC),
-        )
-        return self.repository.create_document(model)
-
-    def delete_document(self, document_id: str) -> bool:
-        return self.repository.delete_document(document_id)
 
     def list_files(self, workspace_id: str) -> list[WorkspaceFile]:
         self._sync_workspace_files_from_mattin(workspace_id=workspace_id)
@@ -314,11 +323,9 @@ class WorkspaceService:
                 self.repository.save_file(local_file)
                 changed += 1
 
-        # Remove stale local entries so the workspace file list mirrors Mattin.
+        # Remove stale Mattin-backed entries so the workspace file list mirrors Mattin.
         for local_file in self.repository.list_files(workspace_id):
             if not isinstance(local_file.mattin_file_id, int):
-                self.repository.delete_file(local_file.id)
-                changed += 1
                 continue
             if local_file.mattin_file_id not in remote_file_ids:
                 self.repository.delete_file(local_file.id)
@@ -375,7 +382,7 @@ class WorkspaceService:
             mime_type=resolved_mime_type,
             size_bytes=len(content_bytes),
             mattin_file_id=mattin_file_id,
-            content_bytes=content_bytes,
+            content_bytes=b"",
             created_at=datetime.now(UTC),
         )
         logger.info(
@@ -385,6 +392,9 @@ class WorkspaceService:
             mattin_file_id,
         )
         return self.repository.create_file(model)
+
+    def persist_chart_images_in_markdown(self, workspace_id: str, markdown: str) -> str:
+        return self.block_chat_agent_service.persist_chart_images_in_markdown(workspace_id, markdown)
 
     def delete_file(self, workspace_id: str, file_id: str) -> bool:
         workspace_file = self.repository.get_file(workspace_id, file_id)
@@ -422,16 +432,28 @@ class WorkspaceService:
             return None
 
         workspace_files = self.repository.list_files(workspace_id)
-        documents = self.repository.list_documents(workspace_id)
 
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
             for workspace_file in workspace_files:
-                zip_file.writestr(workspace_file.file_name, workspace_file.content_bytes)
-
-            for document in documents:
-                doc_name = f"generated-documents/{document.title}.md"
-                zip_file.writestr(doc_name, document.content)
+                file_bytes = workspace_file.content_bytes
+                if (
+                    not file_bytes
+                    and isinstance(workspace_file.mattin_file_id, int)
+                    and workspace.mattin_repository_id
+                ):
+                    try:
+                        file_bytes, _content_type = self.mattin_client.fetch_resource_view(
+                            repository_id=workspace.mattin_repository_id,
+                            resource_id=workspace_file.mattin_file_id,
+                        )
+                    except MattinClientError as exc:
+                        logger.warning(
+                            "build_workspace_zip: Mattin fetch failed. file_id=%s error=%s",
+                            workspace_file.id, exc,
+                        )
+                        file_bytes = workspace_file.content_bytes
+                zip_file.writestr(workspace_file.file_name, file_bytes)
 
         archive_name = f"{workspace.name.replace(' ', '_') or 'workspace'}_bundle.zip"
         return archive_name, zip_buffer.getvalue()
@@ -440,16 +462,19 @@ class WorkspaceService:
         self,
         workspace_id: str,
         prompt: str,
-        reference_document_ids: list[str],
         reference_file_ids: list[str],
     ) -> WorkspaceRun:
         if not prompt.strip():
             raise ValueError("Prompt is required")
 
-        references = self.repository.get_documents_by_ids(workspace_id, reference_document_ids)
         reference_files = self.repository.get_files_by_ids(workspace_id, reference_file_ids)
-        reference_titles = [doc.title for doc in references] + [
-            file.file_name for file in reference_files
+        reference_titles = [file.file_name for file in reference_files]
+
+        image_files = [file for file in reference_files if file.mime_type.startswith("image/")]
+        file_uploads = [
+            ("files", (file.file_name, file.content_bytes, file.mime_type))
+            for file in image_files
+            if file.content_bytes
         ]
 
         workspace_run = WorkspaceRun(
@@ -461,23 +486,23 @@ class WorkspaceService:
         )
 
         logger.info(
-            "Creating run. run_id=%s workspace_id=%s reference_docs=%s reference_files=%s",
+            "Creating run. run_id=%s workspace_id=%s reference_files=%s",
             workspace_run.id,
             workspace_id,
-            len(reference_document_ids),
             len(reference_file_ids),
         )
 
         mattin_reference_file_ids = [
             file.mattin_file_id
             for file in reference_files
-            if isinstance(file.mattin_file_id, int)
+            if not file.mime_type.startswith("image/") and isinstance(file.mattin_file_id, int)
         ]
 
         generated_blocks = self.generation_agent_service.generate_blocks(
             prompt=prompt,
             reference_titles=reference_titles,
             reference_file_ids=mattin_reference_file_ids,
+            file_uploads=file_uploads or None,
         )
 
         if generated_blocks is None:
@@ -498,19 +523,22 @@ class WorkspaceService:
             len(generated_blocks),
         )
 
-        block_models = [
-            Block(
-                id=data["id"],
-                workspace_run_id=workspace_run.id,
-                order_index=data["order_index"],
-                title=data["title"],
-                block_type=data["block_type"],
-                summary=data["summary"],
-                file_name=data["file_name"],
-                content=data["content"],
+        block_models = []
+        for data in generated_blocks:
+            raw_content = str(data.get("content") or "")
+            content = self.persist_chart_images_in_markdown(workspace_id, raw_content)
+            block_models.append(
+                Block(
+                    id=data["id"],
+                    workspace_run_id=workspace_run.id,
+                    order_index=data["order_index"],
+                    title=data["title"],
+                    block_type=data["block_type"],
+                    summary=data["summary"],
+                    file_name=data["file_name"],
+                    content=content,
+                )
             )
-            for data in generated_blocks
-        ]
 
         created_run = self.repository.create_run_with_blocks(workspace_run, block_models)
         persisted_blocks = self.repository.list_blocks(created_run.id)
@@ -552,12 +580,12 @@ class WorkspaceService:
     def get_block(self, run_id: str, block_id: str) -> Block | None:
         return self.repository.get_block(run_id, block_id)
 
-    def update_block_content(self, run_id: str, block_id: str, content: str) -> Block | None:
+    def update_block_content(self, workspace_id: str, run_id: str, block_id: str, content: str) -> Block | None:
         block = self.repository.get_block(run_id, block_id)
         if block is None:
             return None
 
-        block.content = content
+        block.content = self.persist_chart_images_in_markdown(workspace_id, content)
         block.refresh_meta_on_save()
         saved_block = self.repository.save_block(block)
         self.relationship_service.update_block_metadata(block)
@@ -655,6 +683,7 @@ class WorkspaceService:
         resolved_title = title.strip() or "Untitled block"
         resolved_summary = summary.strip()
         resolved_content = content or ""
+        resolved_content = self.persist_chart_images_in_markdown(workspace_id, resolved_content)
         resolved_block_type = block_type.strip() or "chapter"
         resolved_file_name = (file_name or "").strip()
         if not resolved_file_name:
@@ -739,7 +768,6 @@ class WorkspaceService:
         user_message: str,
         *,
         selected_snippet: str | None = None,
-        auto_apply: bool = True,
         conversation_id: int | None = None,
         chat_agent_id: int | None = None,
     ) -> dict[str, Any]:
@@ -759,18 +787,18 @@ class WorkspaceService:
             block_id=block_id,
             user_message=user_message,
             selected_snippet=selected_snippet,
-            auto_apply=auto_apply,
             conversation_id=conversation_id,
             chat_agent_id=chat_agent_id,
         )
+
+        if result.get("blocks_modified"):
+            self._refresh_relationships_for_run(run_id)
 
         candidate_content = (
             result.get("updated_content") if result.get("applied") else result.get("proposed_content")
         )
         if isinstance(candidate_content, str) and candidate_content.strip() and candidate_content != original_content:
             logger.info(f"Content updated for block {block_id}")
-            if result.get("applied"):
-                self._refresh_relationships_for_run(run_id)
             impact_suggestions = self.impact_service.check_impact(
                 run_id=run_id,
                 block_id=block_id,
@@ -828,6 +856,30 @@ class WorkspaceService:
                 "file_name": block.file_name,
             }
             for block in self.repository.list_blocks(run_id)
+        ]
+
+    def get_blocks_content(
+        self,
+        workspace_id: str,
+        run_id: str,
+        block_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        run = self.repository.get_run(run_id)
+        if run is None or run.workspace_id != workspace_id:
+            raise ValueError("Generated run not found")
+
+        blocks = self.repository.get_blocks_by_ids(run_id, block_ids)
+        return [
+            {
+                "block_id": b.id,
+                "order_index": b.order_index,
+                "title": b.title,
+                "summary": b.summary,
+                "block_type": b.block_type,
+                "file_name": b.file_name,
+                "content": b.content,
+            }
+            for b in blocks
         ]
 
     def review_run_consistency(self, workspace_id: str, run_id: str) -> dict[str, Any]:
