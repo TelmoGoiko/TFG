@@ -34,6 +34,23 @@ Para ejecutar solo setup (DB + migraciones, sin lanzar servers):
 powershell -ExecutionPolicy Bypass -File scripts/dev-up.ps1 -SkipServers
 ```
 
+## Docker dev (todo en un compose)
+
+```bash
+docker compose up --build
+```
+
+- Backend: http://localhost:8010
+- Frontend: http://localhost:5173
+
+Si no tienes `backend/.env`, copia `backend/.env.example`.
+
+Para aplicar migraciones manualmente:
+
+```bash
+docker compose exec backend python -m alembic upgrade head
+```
+
 ## 2) Backend
 
 ```bash
@@ -52,11 +69,32 @@ npm install
 npm run dev
 ```
 
-## Endpoints iniciales
+## Endpoints principales
 
 - `GET /health`
-- `GET /api/v1/items`
-- `POST /api/v1/items`
+- API base: `/api/v1`
+
+- Workspaces:
+	- `GET /api/v1/workspaces?owner_id=<owner_id>`
+	- `POST /api/v1/workspaces`
+	- `GET /api/v1/workspaces/{workspace_id}`
+	- `DELETE /api/v1/workspaces/{workspace_id}`
+
+- Workspace files:
+	- `GET /api/v1/workspaces/{workspace_id}/files`
+	- `POST /api/v1/workspaces/{workspace_id}/files` (multipart upload)
+	- `GET /api/v1/workspaces/{workspace_id}/files/{file_id}/download`
+	- `DELETE /api/v1/workspaces/{workspace_id}/files/{file_id}`
+
+- Generated runs & blocks (document generation):
+	- `GET /api/v1/workspaces/{workspace_id}/generated`
+	- `POST /api/v1/workspaces/{workspace_id}/generated` (create generation run)
+	- `GET /api/v1/workspaces/{workspace_id}/generated/{run_id}`
+	- `DELETE /api/v1/workspaces/{workspace_id}/generated/{run_id}`
+	- `GET /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks`
+	- `POST /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks`
+	- `GET|PATCH|DELETE /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks/{block_id}`
+	- Block relationships: `GET/POST/DELETE /api/v1/workspaces/{workspace_id}/generated/{run_id}/blocks/{block_id}/relationships`
 
 ## Flujo de generacion por bloques (agent-ready)
 
