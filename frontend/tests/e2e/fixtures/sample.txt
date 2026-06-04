@@ -1,0 +1,3 @@
+Sample fixture for E2E upload.
+
+This file is used by Playwright tests to verify document upload flows.
