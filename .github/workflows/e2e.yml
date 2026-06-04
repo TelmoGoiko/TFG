@@ -13,6 +13,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
     env:
+      COMPOSE_PROJECT_NAME: tfg_ci_${{ github.run_id }}
       MATTIN_API_URL: ${{ secrets.MATTIN_API_URL }}
       MATTIN_API_KEY: ${{ secrets.MATTIN_API_KEY }}
       MATTIN_APP_ID: ${{ secrets.MATTIN_APP_ID }}
@@ -88,16 +89,16 @@ jobs:
           EOF
 
       - name: Start stack
-        run: docker compose up -d --build db backend
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build db backend
 
       - name: Run database migrations
-        run: docker compose exec -T backend python -m alembic upgrade head
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml exec -T backend python -m alembic upgrade head
 
       - name: Install frontend deps in container
-        run: docker compose run --rm frontend npm ci
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml run --rm frontend npm ci
 
       - name: Start frontend
-        run: docker compose up -d frontend
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d frontend
 
       - name: Wait for backend (Windows)
         if: runner.os == 'Windows'
@@ -182,3 +183,7 @@ jobs:
         with:
           name: playwright-report
           path: frontend/playwright-report
+
+      - name: Cleanup stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v --remove-orphans

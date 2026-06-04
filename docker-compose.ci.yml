@@ -1,0 +1,9 @@
+services:
+  db:
+    container_name: ${COMPOSE_PROJECT_NAME:-tfg_ci}_pgvector
+
+  backend:
+    container_name: ${COMPOSE_PROJECT_NAME:-tfg_ci}_backend
+
+  frontend:
+    container_name: ${COMPOSE_PROJECT_NAME:-tfg_ci}_frontend
