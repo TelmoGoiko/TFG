@@ -35,7 +35,7 @@ jobs:
 
       - name: Validate Mattin secrets (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           if (-not $env:MATTIN_API_URL -or -not $env:MATTIN_API_KEY -or -not $env:MATTIN_APP_ID) {
             Write-Error "Missing required secrets: MATTIN_API_URL, MATTIN_API_KEY, MATTIN_APP_ID"
@@ -53,7 +53,7 @@ jobs:
 
       - name: Write backend env (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           Copy-Item backend/.env.example backend/.env -Force
           @"
@@ -101,7 +101,7 @@ jobs:
 
       - name: Wait for backend (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           $backendUrl = "http://localhost:8010/health"
           $ready = $false
@@ -134,7 +134,7 @@ jobs:
 
       - name: Wait for frontend (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           $frontendUrl = "http://localhost:5173"
           $ready = $false
