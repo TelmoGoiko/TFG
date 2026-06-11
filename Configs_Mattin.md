@@ -1,21 +1,22 @@
-# En MATTIN:
+# In MATTIN:
 
-Añadir AI services (api key de openai...)
-Añadir Embedding Services (api key de openai...)
-Generar Api-key para la app
+Add AI services (api key openai...)
+Add Embedding Services (api key openai...)
+Generate API Key to connect to this app (.env in the backend)
+Generate API Key in langsmith to see agents execution
 
 ## MCP
 ### MCP config for chat:
 {"tfg-docs-tools": {"transport": "streamable_http", "url": "http://host.docker.internal:8010/mcp/v1/id/1/1"}}
 
 ## Data-structures:
-### Visual_Generatos_Structure: 
+### Visual_Generator_Structure: 
     -visual_markdwon: string, The ready-to-use markdown string (image tag or mermaid fenced block) to embed in the document
     -description: string, One-line human description of what was generated
 
 
 
-## AGENTES (siempre añadir el {question}):
+## AGENTS (add always {question} on prompt template; and everytime we change workspace, change the knowledge base (silo)):
 ### Document Writer Agent:
         - prompt: 
             You are a document writing assistant. When called, you generate a complete markdown document based on a user request. Usually you will also get a document as reference, and will be asked to generate the new document as a copy or adaptation of the reference.  You must return ONLY valid JSON with no markdown fences, with this exact shape:
