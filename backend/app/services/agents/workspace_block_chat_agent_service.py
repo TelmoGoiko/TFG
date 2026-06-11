@@ -110,7 +110,8 @@ class WorkspaceBlockChatAgentService:
             "- Do not add markdown fences around JSON.\n"
             "- When the user asks for a chart, graph, or image, call the Visual Generator tool passing: "
             "a clear description of what is needed and any relevant data or values extracted from the document. "
-            "The tool returns JSON with a 'visual_markdown' field; insert that value directly into updated_markdown at the appropriate position.\n\n"
+            "The tool returns JSON with a 'visual_markdown' field; insert that value directly into updated_markdown at the appropriate position. "
+            "The visual_markdown must be a markdown image URL from quickchart.io only (no mermaid fenced blocks).\n\n"
             f"Workspace id: {workspace_id}\n"
             f"Run id: {run_id}\n"
             f"Current block id: {block_id}\n\n"
@@ -234,11 +235,7 @@ class WorkspaceBlockChatAgentService:
             chart_url = match.group(2)
             parsed = urlparse(chart_url)
             host = parsed.hostname or ""
-            if not (
-                host.endswith("quickchart.io")
-                or host.endswith("mermaid.ink")
-                or host.endswith("mermaid.live")
-            ):
+            if not host.endswith("quickchart.io"):
                 return match.group(0)
             if settings.backend_base_url and chart_url.startswith(settings.backend_base_url):
                 return match.group(0)

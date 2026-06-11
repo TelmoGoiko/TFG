@@ -11,7 +11,7 @@ Generate API Key in langsmith to see agents execution
 
 ## Data-structures:
 ### Visual_Generator_Structure: 
-    -visual_markdwon: string, The ready-to-use markdown string (image tag or mermaid fenced block) to embed in the document
+    -visual_markdwon: string, The ready-to-use markdown image string (QuickChart URL) to embed in the document
     -description: string, One-line human description of what was generated
 
 
@@ -81,6 +81,7 @@ Generate API Key in langsmith to see agents execution
             - If the user wants to delete a block, call MCP tool workspace_delete_block with workspace_id, run_id, and block_id.
             - Keep consistency with the document outline.
             - When the user asks for a chart, graph, or image, call the Visual Generator tool passing a clear description and any relevant data from the document. Insert the returned visual_markdown into updated_markdown at the appropriate position.
+            - visual_markdown must always be a markdown image with a QuickChart URL. Never return or embed mermaid fenced blocks.
         - Conversational: mensajes:20, tokens:4000, umbral:10
         - Tool: Visual Generator Tool
         - MCP: mcp-chat
@@ -97,15 +98,15 @@ Generate API Key in langsmith to see agents execution
             "description": "one-line human description of what was generated"
             }
             - Format: ![descriptive alt text](url)
+            - visual_markdown must always be a markdown image URL and the URL must use quickchart.io.
+            - Never return mermaid fenced code blocks.
             - Choose the right visual type based on the description:
-            - Comparisons, rankings, time series, quantities → QuickChart bar/line/pie
-            - Process flows, decision trees, sequences → Mermaid diagram (return as fenced mermaid block instead)
+            - Comparisons, rankings, time series, quantities, processes, decision trees, sequences → QuickChart chart types (bar, horizontalBar, line, pie, doughnut, radar)
             - For QuickChart: build a Chart.js v2 JSON config and URL-encode it.
             Base URL: https://quickchart.io/chart?c=<url-encoded-json>
             Supported types: bar, horizontalBar, line, pie, doughnut, radar
             Always set a width and height via &w=600&h=300 query params.
             Use the provided data values; if none given, use representative placeholders.
-            - For Mermaid: return a fenced code block with language "mermaid", no image tag.
 
             Examples:
 
@@ -116,12 +117,7 @@ Generate API Key in langsmith to see agents execution
             Output: ![Budget distribution](https://quickchart.io/chart?c=%7B%22type%22%3A%22pie%22%2C%22data%22%3A%7B%22labels%22%3A%5B%22Personnel%22%2C%22Equipment%22%2C%22Other%22%5D%2C%22datasets%22%3A%5B%7B%22data%22%3A%5B60%2C25%2C15%5D%7D%5D%7D%7D&w=400&h=300)
 
             Input: "flowchart of approval process"
-            Output:
-            ```mermaid
-            flowchart LR
-                A[Request submitted] --> B{Manager review}
-                B -->|Approved| C[Sign contract]
-                B -->|Rejected| D[Archive]
+            Output: ![Approval process](https://quickchart.io/chart?c=%7B%22type%22%3A%22horizontalBar%22%2C%22data%22%3A%7B%22labels%22%3A%5B%22Request%20submitted%22%2C%22Manager%20review%22%2C%22Sign%20contract%22%2C%22Archive%22%5D%2C%22datasets%22%3A%5B%7B%22label%22%3A%22Process%20steps%22%2C%22data%22%3A%5B1%2C1%2C1%2C1%5D%7D%5D%7D%7D&w=600&h=300)
         - Tool Agent
         - Web Search
         - Data Structure: Visual Generator Structure
